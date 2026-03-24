@@ -211,13 +211,6 @@ pytest tests/ -v
 
 ---
 
-## Repository Access
-
-The assignment requires the GitHub repository to be **private** with the following collaborators invited:
-- `Devdatta1999`
-- `Saurabh2504`
-
----
 
 ## Notes
 
