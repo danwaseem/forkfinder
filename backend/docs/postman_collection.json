@@ -1,0 +1,653 @@
+{
+  "info": {
+    "name": "ForkFinder API",
+    "description": "Complete Postman collection for the ForkFinder Restaurant Discovery & Review Platform.\n\n**Base URL:** `{{base_url}}` (default: http://localhost:8000)\n\n**Auth:** After logging in, copy `access_token` from the response and set the `token` collection variable. All protected requests use `Authorization: Bearer {{token}}`.\n\n**Quick start:**\n1. Set `base_url` = `http://localhost:8000`\n2. Run `POST /auth/user/login` or `POST /auth/owner/login`\n3. Copy `access_token` → set `token` variable\n4. All other requests inherit the Bearer token automatically",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "forkfinder-api-v1"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "token",    "value": "",                      "type": "string" },
+    { "key": "restaurant_id", "value": "1",               "type": "string" },
+    { "key": "review_id",     "value": "1",               "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Root health check",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/", "host": ["{{base_url}}"], "path": [""] },
+            "description": "Returns `{\"status\": \"ok\"}`. No auth required."
+          }
+        },
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Reviewer — Sign up",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/user/signup", "host": ["{{base_url}}"], "path": ["auth","user","signup"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane@example.com\",\n  \"password\": \"secret123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Creates a reviewer account (role=user). Returns a JWT.\n\n**After running:** copy `access_token` and save as `token` variable."
+          }
+        },
+        {
+          "name": "Reviewer — Log in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set('token', json.access_token);",
+                  "  console.log('token saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/user/login", "host": ["{{base_url}}"], "path": ["auth","user","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@demo.com\",\n  \"password\": \"password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Login as reviewer. The test script auto-saves the token to `{{token}}`."
+          }
+        },
+        {
+          "name": "Owner — Sign up",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/owner/signup", "host": ["{{base_url}}"], "path": ["auth","owner","signup"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mario Rossi\",\n  \"email\": \"mario@ristorantebello.com\",\n  \"password\": \"ownerpass1\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Creates a restaurant owner account (role=owner)."
+          }
+        },
+        {
+          "name": "Owner — Log in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set('token', json.access_token);",
+                  "  console.log('owner token saved');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/owner/login", "host": ["{{base_url}}"], "path": ["auth","owner","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@demo.com\",\n  \"password\": \"password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Login as owner. The test script auto-saves the token to `{{token}}`."
+          }
+        },
+        {
+          "name": "Get current user (auth/me)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth","me"] },
+            "description": "Returns id, name, email, role, profile_photo_url, created_at. Works for both roles."
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Profile",
+      "item": [
+        {
+          "name": "Get my profile",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users","me"] },
+            "description": "Returns full reviewer profile (all fields)."
+          }
+        },
+        {
+          "name": "Update my profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users","me"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"phone\": \"+1 (415) 555-0100\",\n  \"city\": \"San Francisco\",\n  \"state\": \"CA\",\n  \"country\": \"United States\",\n  \"about_me\": \"Food lover and amateur critic.\",\n  \"languages\": \"English, Spanish\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "All fields optional. Only supplied fields are updated."
+          }
+        },
+        {
+          "name": "Upload profile photo",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/users/me/photo", "host": ["{{base_url}}"], "path": ["users","me","photo"] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "description": "JPEG/PNG/WEBP/GIF, max 5 MB" }]
+            },
+            "description": "Replaces the current profile photo. Returns `{ \"profile_photo_url\": \"/uploads/profiles/...\" }`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Preferences",
+      "item": [
+        {
+          "name": "Get my preferences",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/preferences/me", "host": ["{{base_url}}"], "path": ["preferences","me"] },
+            "description": "Returns preferences plus `ai_context` dict used by the AI assistant."
+          }
+        },
+        {
+          "name": "Update my preferences",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/preferences/me", "host": ["{{base_url}}"], "path": ["preferences","me"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cuisine_preferences\": [\"Italian\", \"Sushi\"],\n  \"price_range\": \"$$\",\n  \"search_radius\": 15,\n  \"preferred_locations\": [\"San Francisco\", \"Oakland\"],\n  \"dietary_restrictions\": [\"Gluten-Free\"],\n  \"ambiance_preferences\": [\"Casual\", \"Outdoor Seating\"],\n  \"sort_preference\": \"rating\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Partial update — only include the fields you want to change.\n\nValid cuisine values: American, Italian, Mexican, Japanese, Chinese, Indian, Thai, French, Mediterranean, Korean, Vietnamese, Greek, Spanish, Middle Eastern, Caribbean, Ethiopian, Seafood, BBQ, Pizza, Burgers, Sushi, Vegan, Vegetarian\n\nValid ambiance values: Casual, Fine Dining, Family-Friendly, Romantic, Outdoor Seating, Sports Bar, Live Music, Quick Bite, Brunch Spot, Late Night, Rooftop, Waterfront\n\nValid dietary values: Vegetarian, Vegan, Gluten-Free, Halal, Kosher, Dairy-Free, Nut-Free, Low-Carb, Keto, Paleo, Shellfish-Free, Soy-Free"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Restaurants",
+      "item": [
+        {
+          "name": "Search restaurants (public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/restaurants?q=pizza&city=San+Francisco&price_range=%24%24&sort=rating&page=1&limit=12",
+              "host": ["{{base_url}}"],
+              "path": ["restaurants"],
+              "query": [
+                { "key": "q",           "value": "pizza",         "description": "Keyword search (name, cuisine, description, city, zip)" },
+                { "key": "cuisine",     "value": "",              "description": "Cuisine type partial match", "disabled": true },
+                { "key": "city",        "value": "San Francisco", "description": "City partial match" },
+                { "key": "zip_code",    "value": "",              "description": "ZIP/postal code", "disabled": true },
+                { "key": "price_range", "value": "$$",            "description": "Exact: $, $$, $$$, $$$$" },
+                { "key": "rating_min",  "value": "",              "description": "Minimum avg rating (0–5)", "disabled": true },
+                { "key": "sort",        "value": "rating",        "description": "rating | newest | most_reviewed | price_asc | price_desc" },
+                { "key": "page",        "value": "1" },
+                { "key": "limit",       "value": "12",            "description": "1–100" }
+              ]
+            },
+            "description": "No auth required. Authenticated callers get accurate `is_favorited` flags."
+          }
+        },
+        {
+          "name": "Get restaurant details (public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["restaurants","{{restaurant_id}}"]
+            },
+            "description": "Full restaurant detail including hours, photos, avg_rating, review_count."
+          }
+        },
+        {
+          "name": "Create restaurant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/restaurants", "host": ["{{base_url}}"], "path": ["restaurants"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ristorante Bello\",\n  \"description\": \"Authentic Neapolitan pizza since 1995.\",\n  \"cuisine_type\": \"Italian\",\n  \"price_range\": \"$$\",\n  \"address\": \"123 Main St\",\n  \"city\": \"San Francisco\",\n  \"state\": \"CA\",\n  \"country\": \"United States\",\n  \"zip_code\": \"94102\",\n  \"phone\": \"+1 (415) 555-0101\",\n  \"website\": \"https://ristorantebello.com\",\n  \"latitude\": 37.7749,\n  \"longitude\": -122.4194,\n  \"hours\": {\n    \"monday\": \"11am-10pm\",\n    \"tuesday\": \"11am-10pm\",\n    \"wednesday\": \"11am-10pm\",\n    \"thursday\": \"11am-10pm\",\n    \"friday\": \"11am-11pm\",\n    \"saturday\": \"10am-11pm\",\n    \"sunday\": \"Closed\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Any authenticated user (reviewer or owner) may create a listing. Only `name` is required."
+          }
+        },
+        {
+          "name": "Update restaurant",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["restaurants","{{restaurant_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Now open for brunch on weekends!\",\n  \"hours\": {\n    \"saturday\": \"10am-3pm, 5pm-11pm\",\n    \"sunday\": \"10am-3pm\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Partial update — only supplied fields are written. Requires creator or claimed owner."
+          }
+        },
+        {
+          "name": "Delete restaurant",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["restaurants","{{restaurant_id}}"]
+            },
+            "description": "Permanently deletes the restaurant. Returns 204 No Content. Requires creator or claimed owner."
+          }
+        },
+        {
+          "name": "Upload restaurant photo",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}/photos",
+              "host": ["{{base_url}}"],
+              "path": ["restaurants","{{restaurant_id}}","photos"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "description": "JPEG/PNG/WEBP/GIF, max 5 MB" }]
+            },
+            "description": "Appends a photo to the restaurant. Max 10 photos total. Returns full updated photos array."
+          }
+        },
+        {
+          "name": "Claim restaurant (owner only)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}/claim",
+              "host": ["{{base_url}}"],
+              "path": ["restaurants","{{restaurant_id}}","claim"]
+            },
+            "description": "Owner role required. Claims are auto-approved. Returns `{ claim_status: \"approved\" }`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "Create review (restaurant_id in body)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/reviews", "host": ["{{base_url}}"], "path": ["reviews"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurant_id\": 1,\n  \"rating\": 5,\n  \"comment\": \"Best pasta I've ever had. The carbonara was perfectly al dente.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Reviewer accounts only (role=user). Owners receive 403.\n\nRating: 1–5. Comment: 10–5000 characters.\n\nReturns the new review plus updated restaurant `avg_rating` and `review_count`."
+          }
+        },
+        {
+          "name": "Create review (restaurant_id in URL)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}/reviews",
+              "host": ["{{base_url}}"],
+              "path": ["restaurants","{{restaurant_id}}","reviews"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4,\n  \"comment\": \"Great tacos, a bit slow on service but worth the wait.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Alternate endpoint — restaurant_id in URL path. Identical behaviour to POST /reviews."
+          }
+        },
+        {
+          "name": "List reviews for a restaurant (public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/restaurants/{{restaurant_id}}/reviews?sort=newest&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["restaurants","{{restaurant_id}}","reviews"],
+              "query": [
+                { "key": "sort",  "value": "newest", "description": "newest | oldest | highest_rating | lowest_rating" },
+                { "key": "page",  "value": "1" },
+                { "key": "limit", "value": "10", "description": "1–100" }
+              ]
+            },
+            "description": "Public. No authentication required. Returns paginated reviews with reviewer name and photo."
+          }
+        },
+        {
+          "name": "Update review",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/reviews/{{review_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["reviews","{{review_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Came back a second time — even better than the first visit!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Author-only. Reviewer accounts only. At least one of `rating` or `comment` required.\n\nReturns updated review plus recalculated restaurant stats."
+          }
+        },
+        {
+          "name": "Delete review",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/reviews/{{review_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["reviews","{{review_id}}"]
+            },
+            "description": "Author-only. Reviewer accounts only. Returns `{ review: null, restaurant_stats: {...} }`."
+          }
+        },
+        {
+          "name": "Upload review photo",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/reviews/{{review_id}}/photos",
+              "host": ["{{base_url}}"],
+              "path": ["reviews","{{review_id}}","photos"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "description": "JPEG/PNG/WEBP/GIF, max 5 MB" }]
+            },
+            "description": "Appends a photo to the review. Max 5 photos total. Author-only."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Favorites",
+      "item": [
+        {
+          "name": "Add to favorites",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/favorites/{{restaurant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["favorites","{{restaurant_id}}"]
+            },
+            "description": "Returns `{ restaurant_id, is_favorited: true, message }`. 400 if already favorited."
+          }
+        },
+        {
+          "name": "Remove from favorites",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/favorites/{{restaurant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["favorites","{{restaurant_id}}"]
+            },
+            "description": "Returns `{ restaurant_id, is_favorited: false, message }`. 400 if not favorited."
+          }
+        },
+        {
+          "name": "List my favorites",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/favorites/me", "host": ["{{base_url}}"], "path": ["favorites","me"] },
+            "description": "Returns all favorited restaurants, newest-first. Each item includes `favorited_at` timestamp."
+          }
+        }
+      ]
+    },
+    {
+      "name": "History",
+      "item": [
+        {
+          "name": "Get my activity history",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/history/me", "host": ["{{base_url}}"], "path": ["history","me"] },
+            "description": "Returns `reviews` (reviews written) and `restaurants_added` (listings created), both newest-first.\n\nWorks for both reviewer and owner accounts."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Owner Dashboard",
+      "description": "All endpoints require an owner token (role=owner). Use POST /auth/owner/login to get one.",
+      "item": [
+        {
+          "name": "Get owner profile",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/owner/me", "host": ["{{base_url}}"], "path": ["owner","me"] },
+            "description": "Returns owner profile fields plus a list of owned/claimed restaurants."
+          }
+        },
+        {
+          "name": "Update owner profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/owner/me", "host": ["{{base_url}}"], "path": ["owner","me"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mario Rossi\",\n  \"phone\": \"+1 (415) 555-0200\",\n  \"city\": \"San Francisco\",\n  \"state\": \"CA\",\n  \"country\": \"United States\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Partial update. Same field rules as reviewer profile update."
+          }
+        },
+        {
+          "name": "Upload owner profile photo",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/owner/me/photo", "host": ["{{base_url}}"], "path": ["owner","me","photo"] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "description": "JPEG/PNG/WEBP/GIF, max 5 MB" }]
+            }
+          }
+        },
+        {
+          "name": "Aggregate dashboard",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/owner/dashboard", "host": ["{{base_url}}"], "path": ["owner","dashboard"] },
+            "description": "Aggregate stats across all owned/claimed restaurants: totals, rating distribution, 6-month trend, sentiment, recent reviews."
+          }
+        },
+        {
+          "name": "List owned restaurants",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/owner/restaurants", "host": ["{{base_url}}"], "path": ["owner","restaurants"] }
+          }
+        },
+        {
+          "name": "Update owned restaurant",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/owner/restaurants/{{restaurant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["owner","restaurants","{{restaurant_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description for the restaurant.\",\n  \"phone\": \"+1 (415) 555-0199\",\n  \"hours\": {\n    \"monday\": \"11am-10pm\",\n    \"sunday\": \"Closed\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "Per-restaurant stats",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/owner/restaurants/{{restaurant_id}}/stats",
+              "host": ["{{base_url}}"],
+              "path": ["owner","restaurants","{{restaurant_id}}","stats"]
+            },
+            "description": "Rating breakdown, 6-month trend, 10 recent reviews, sentiment summary, favorites count."
+          }
+        },
+        {
+          "name": "Paginated reviews for one restaurant",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/owner/restaurants/{{restaurant_id}}/reviews?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["owner","restaurants","{{restaurant_id}}","reviews"],
+              "query": [
+                { "key": "page",  "value": "1" },
+                { "key": "limit", "value": "20", "description": "1–100" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Claim restaurant",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/owner/restaurants/{{restaurant_id}}/claim",
+              "host": ["{{base_url}}"],
+              "path": ["owner","restaurants","{{restaurant_id}}","claim"]
+            },
+            "description": "Claim an unclaimed listing. Auto-approved. Returns `{ claim_status: \"approved\" }`."
+          }
+        },
+        {
+          "name": "All reviews across owned restaurants",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/owner/reviews", "host": ["{{base_url}}"], "path": ["owner","reviews"] },
+            "description": "50 most recent reviews across all owned/claimed restaurants."
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI Assistant",
+      "item": [
+        {
+          "name": "Chat — first turn",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/ai-assistant/chat", "host": ["{{base_url}}"], "path": ["ai-assistant","chat"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"I want a romantic Italian restaurant in San Francisco for a date night, budget around $$\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "First turn — no conversation_id needed. The response returns a `conversation_id`; pass it on subsequent turns."
+          }
+        },
+        {
+          "name": "Chat — continue conversation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/ai-assistant/chat", "host": ["{{base_url}}"], "path": ["ai-assistant","chat"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Do any of those have outdoor seating?\",\n  \"conversation_id\": 7\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Continue an existing conversation. Pass the `conversation_id` from the prior response. The backend loads previous turns automatically."
+          }
+        },
+        {
+          "name": "Chat — with explicit history",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/ai-assistant/chat", "host": ["{{base_url}}"], "path": ["ai-assistant","chat"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What about something vegan-friendly?\",\n  \"conversation_history\": [\n    { \"role\": \"user\",      \"content\": \"Find me Italian restaurants in SF\" },\n    { \"role\": \"assistant\", \"content\": \"Here are my top Italian picks in San Francisco...\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Client-managed history — pass conversation_history instead of conversation_id. Supports up to ~10 prior turns before context gets truncated."
+          }
+        },
+        {
+          "name": "Chat — real-time query (triggers web search)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/ai-assistant/chat", "host": ["{{base_url}}"], "path": ["ai-assistant","chat"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What are the trending restaurants in San Francisco right now?\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Mentions 'trending' — this triggers Tavily web search if TAVILY_API_KEY is set. The response includes `web_results_summary`."
+          }
+        }
+      ]
+    }
+  ]
+}
