@@ -34,7 +34,7 @@ ForkFinder is a full-stack Yelp-style restaurant discovery and review platform. 
 | Backend | FastAPI, SQLAlchemy 2.0, Pydantic v2, Uvicorn |
 | Database | MySQL 8.0+ |
 | Auth | python-jose (JWT), passlib (bcrypt) |
-| AI | LangChain + Ollama (llama3.2), optional Tavily web search |
+| AI | LangChain + Ollama, Tavily web search |
 | File uploads | Pillow (image validation + resize) |
 
 ---
@@ -199,7 +199,7 @@ source venv/bin/activate
 pytest tests/ -v
 ```
 
-120 tests across 5 modules. Uses in-memory SQLite — no MySQL required.
+120 tests across 5 modules.
 
 | File | Tests |
 |---|---|
