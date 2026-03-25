@@ -38,7 +38,10 @@ ForkFinder is a full-stack Yelp-style restaurant discovery and review platform. 
 | File uploads | Pillow (image validation + resize) |
 
 ---
+## Architecture Diagram
+![Architecture](architecture.png)
 
+---
 ## Setup
 
 ### Prerequisites
