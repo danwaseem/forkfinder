@@ -90,6 +90,18 @@ spec:
               value: "PLAINTEXT://kafka:9092"
             - name: ALLOW_PLAINTEXT_LISTENER
               value: "yes"
+            # Required for a single-broker cluster. Default is 3; Kafka will
+            # refuse to create the __consumer_offsets topic without this.
+            - name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            # Required so internal transaction topics can be created with 1 replica.
+            - name: KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            # Default partition count per topic; 1 is correct for a single broker.
+            - name: KAFKA_CFG_NUM_PARTITIONS
+              value: "1"
           readinessProbe:
             exec:
               command:

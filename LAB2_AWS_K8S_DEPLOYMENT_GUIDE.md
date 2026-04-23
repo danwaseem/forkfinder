@@ -55,7 +55,8 @@ aws sts get-caller-identity
 REGION=us-east-1
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-for svc in user-service owner-service restaurant-service review-service frontend; do
+# 6 repositories: 4 backend services + frontend + shared workers image
+for svc in user-service owner-service restaurant-service review-service frontend workers; do
   aws ecr create-repository \
     --repository-name forkfinder/${svc} \
     --region ${REGION}
@@ -68,13 +69,18 @@ aws ecr describe-repositories --region ${REGION} \
   --query "repositories[*].repositoryUri" --output table
 ```
 
-**Screenshot to capture:** The ECR console showing all 5 repositories.
+**Screenshot to capture:** The ECR console showing all 6 repositories.
 
 ---
 
 ## Part C — Build and Push Docker Images
 
-From the **repo root** directory:
+From the **repo root** directory.
+
+> **Mac Apple Silicon (M1/M2/M3) users — CRITICAL:**
+> EKS nodes run on amd64 (x86_64). Images built natively on arm64 will crash
+> immediately on EKS with `exec format error`. Every `docker build` below
+> **must** include `--platform linux/amd64`.
 
 ### C1. Authenticate Docker to ECR
 
@@ -90,29 +96,41 @@ aws ecr get-login-password --region ${REGION} \
 ECR=${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
 
 # User / Reviewer Service
-docker build -f services/user-service/Dockerfile \
+docker build --platform linux/amd64 \
+  -f services/user-service/Dockerfile \
   -t ${ECR}/forkfinder/user-service:latest .
 docker push ${ECR}/forkfinder/user-service:latest
 
 # Restaurant Owner Service
-docker build -f services/owner-service/Dockerfile \
+docker build --platform linux/amd64 \
+  -f services/owner-service/Dockerfile \
   -t ${ECR}/forkfinder/owner-service:latest .
 docker push ${ECR}/forkfinder/owner-service:latest
 
 # Restaurant Service
-docker build -f services/restaurant-service/Dockerfile \
+docker build --platform linux/amd64 \
+  -f services/restaurant-service/Dockerfile \
   -t ${ECR}/forkfinder/restaurant-service:latest .
 docker push ${ECR}/forkfinder/restaurant-service:latest
 
 # Review Service
-docker build -f services/review-service/Dockerfile \
+docker build --platform linux/amd64 \
+  -f services/review-service/Dockerfile \
   -t ${ECR}/forkfinder/review-service:latest .
 docker push ${ECR}/forkfinder/review-service:latest
 
-# Frontend (bake the API URL — update with your actual backend hostname after step E)
-# For now, leave as localhost; we will rebuild after we get the EKS ALB hostname.
-docker build -f frontend/Dockerfile \
-  --build-arg VITE_API_URL=http://localhost:8000 \
+# Shared workers image (review_worker + restaurant_worker in one image)
+# Build context must be repo root so the Dockerfile can COPY backend/
+docker build --platform linux/amd64 \
+  -f backend/workers/Dockerfile \
+  -t ${ECR}/forkfinder/workers:latest .
+docker push ${ECR}/forkfinder/workers:latest
+
+# Frontend — bake a placeholder API URL for now.
+# We will rebuild with the real ALB hostname in Part J.
+docker build --platform linux/amd64 \
+  -f frontend/Dockerfile \
+  --build-arg VITE_API_URL=http://placeholder \
   -t ${ECR}/forkfinder/frontend:latest \
   frontend/
 docker push ${ECR}/forkfinder/frontend:latest
@@ -126,6 +144,19 @@ docker push ${ECR}/forkfinder/frontend:latest
 
 This step takes ~15–20 minutes.
 
+> **Before running:** verify `t3.medium` is available in your region's AZs.
+> Some AWS accounts or sandbox environments restrict certain instance types.
+> If the cluster fails with "Unsupported instance type" or "No capacity", try
+> `t3a.medium` or `t3.small` as a drop-in replacement:
+> ```bash
+> # Check availability (run before creating the cluster)
+> aws ec2 describe-instance-type-offerings \
+>   --location-type availability-zone \
+>   --filters Name=instance-type,Values=t3.medium \
+>   --region ${REGION} \
+>   --query "InstanceTypeOfferings[*].Location" --output table
+> ```
+
 ```bash
 eksctl create cluster \
   --name forkfinder-cluster \
@@ -133,7 +164,7 @@ eksctl create cluster \
   --nodegroup-name standard-nodes \
   --node-type t3.medium \
   --nodes 2 \
-  --nodes-min 1 \
+  --nodes-min 2 \
   --nodes-max 3 \
   --with-oidc \
   --managed
@@ -198,19 +229,27 @@ kubectl get deployment -n kube-system aws-load-balancer-controller
 
 ## Part F — Update Kubernetes Manifests with Your ECR URIs
 
-Replace the placeholder in every manifest file:
+Replace the placeholder in every manifest file that references an ECR image:
 
 ```bash
 ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
 
-# macOS sed:
+# macOS sed — covers backend services, frontend, AND both worker manifests:
 for f in kubernetes/04-user-service.yaml \
           kubernetes/05-owner-service.yaml \
           kubernetes/06-restaurant-service.yaml \
           kubernetes/07-review-service.yaml \
-          kubernetes/08-frontend.yaml; do
+          kubernetes/08-frontend.yaml \
+          kubernetes/11-review-worker.yaml \
+          kubernetes/12-restaurant-worker.yaml; do
   sed -i '' "s|<YOUR_ECR_REGISTRY>|${ECR_URI}|g" ${f}
 done
+```
+
+Verify no placeholder strings remain:
+```bash
+grep -r '<YOUR_ECR_REGISTRY>' kubernetes/
+# Should return nothing. If any file appears, re-run the sed for that file.
 ```
 
 ---
@@ -237,17 +276,36 @@ Confirm `02-secrets.yaml` has your real base64 values (not the placeholders).
 
 ## Part H — Deploy to Kubernetes
 
-Apply all manifests in order:
+Apply all manifests in order. Deployment order matters: namespace and secrets
+must exist before any workload; MongoDB must be Ready before backend services
+try to connect; Kafka must be Ready before workers start consuming.
 
 ```bash
+# Step 1 — namespace, config, secrets (must be first)
 kubectl apply -f kubernetes/00-namespace.yaml
 kubectl apply -f kubernetes/01-configmap.yaml
 kubectl apply -f kubernetes/02-secrets.yaml
+
+# Step 2 — data layer: wait for MongoDB to be ready before continuing
 kubectl apply -f kubernetes/03-mongodb.yaml
+kubectl rollout status deployment/mongodb -n forkfinder --timeout=120s
+
+# Step 3 — Kafka + Zookeeper: wait for Kafka before deploying workers
+kubectl apply -f kubernetes/10-kafka.yaml
+kubectl rollout status deployment/zookeeper -n forkfinder --timeout=120s
+kubectl rollout status deployment/kafka -n forkfinder --timeout=120s
+
+# Step 4 — backend API services
 kubectl apply -f kubernetes/04-user-service.yaml
 kubectl apply -f kubernetes/05-owner-service.yaml
 kubectl apply -f kubernetes/06-restaurant-service.yaml
 kubectl apply -f kubernetes/07-review-service.yaml
+
+# Step 5 — Kafka workers (start after Kafka is confirmed ready)
+kubectl apply -f kubernetes/11-review-worker.yaml
+kubectl apply -f kubernetes/12-restaurant-worker.yaml
+
+# Step 6 — frontend + ingress
 kubectl apply -f kubernetes/08-frontend.yaml
 kubectl apply -f kubernetes/09-ingress.yaml
 ```
@@ -274,12 +332,17 @@ Expected `kubectl get pods -n forkfinder` output (all status = `Running`):
 ```
 NAME                                   READY   STATUS    RESTARTS
 frontend-<hash>                        1/1     Running   0
+kafka-<hash>                           1/1     Running   0
 mongodb-<hash>                         1/1     Running   0
 owner-service-<hash>                   1/1     Running   0
 restaurant-service-<hash>              1/1     Running   0
+restaurant-worker-<hash>               1/1     Running   0
 review-service-<hash>                  1/1     Running   0
+review-worker-<hash>                   1/1     Running   0
 user-service-<hash>                    1/1     Running   0
+zookeeper-<hash>                       1/1     Running   0
 ```
+**10 pods total.** If you see fewer, check which are missing with `kubectl get pods -n forkfinder`.
 
 **Screenshot to capture:** Full output of `kubectl get pods -n forkfinder` showing all pods Running.
 
@@ -298,7 +361,8 @@ echo "ALB hostname: ${ALB_HOST}"
 Rebuild and push the frontend image with the real backend URL:
 
 ```bash
-docker build -f frontend/Dockerfile \
+docker build --platform linux/amd64 \
+  -f frontend/Dockerfile \
   --build-arg VITE_API_URL=http://${ALB_HOST} \
   -t ${ECR}/forkfinder/frontend:latest \
   frontend/
@@ -360,11 +424,18 @@ curl -I http://${ALB_HOST}/
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Pod stuck in `Pending` | Insufficient node resources | Scale node group: `eksctl scale nodegroup --cluster forkfinder-cluster --nodes 3 standard-nodes` |
-| Pod stuck in `ImagePullBackOff` | Wrong ECR URI or missing ECR permissions | Re-run Part F; check node IAM role has `AmazonEC2ContainerRegistryReadOnly` |
-| Pod in `CrashLoopBackOff` | App startup failure | `kubectl logs <pod-name> -n forkfinder` — usually a bad `DATABASE_URL` or missing secret |
+| Pod stuck in `ImagePullBackOff` | Wrong ECR URI or missing ECR permissions | Verify Part F sed ran for ALL 7 manifest files; check node IAM role has `AmazonEC2ContainerRegistryReadOnly` |
+| Pod in `CrashLoopBackOff` with `exec format error` | Image built for arm64 on a Mac but EKS node is amd64 | Rebuild all images with `--platform linux/amd64` (see Part C) and repush |
+| Pod in `CrashLoopBackOff` | App startup failure | `kubectl logs <pod-name> -n forkfinder` — usually a missing secret key or wrong MongoDB URL |
+| MongoDB PVC stuck in `Pending` | No default StorageClass or gp2 not available | Run `kubectl get storageclass`; if no `(default)` class exists, set `storageClassName: gp2` in `03-mongodb.yaml` (already set) or create the gp2 StorageClass manually |
+| Kafka pod running but workers crash-loop | Single-broker replication factor not set | Confirm `10-kafka.yaml` has `KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=1` (already added). Delete and redeploy kafka pod: `kubectl rollout restart deployment/kafka -n forkfinder` |
+| Worker pods in `CrashLoopBackOff` | Kafka not yet ready when worker started | Wait for Kafka readiness probe to pass, then: `kubectl rollout restart deployment/review-worker deployment/restaurant-worker -n forkfinder` |
+| EKS cluster creation fails with "Unsupported instance type" | t3.medium not available in selected AZ | Re-run `eksctl create cluster` with `--node-type t3a.medium` or specify available zones with `--zones us-east-1a,us-east-1b` |
 | Ingress ADDRESS empty after 10 min | LB controller not running | `kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller` |
 | MongoDB readiness probe failing | Init takes >30s on first boot | `kubectl describe pod mongodb-<hash> -n forkfinder`; increase `initialDelaySeconds` in `03-mongodb.yaml` |
-| Frontend shows blank/CORS error | `VITE_API_URL` wrong | Re-run Part J with the correct ALB hostname |
+| Frontend shows blank/CORS error | `VITE_API_URL` wrong or still `http://placeholder` | Re-run Part J with the real ALB hostname |
+| Old pods not going away after redeployment | Stale ReplicaSets from previous apply | `kubectl get replicasets -n forkfinder` then `kubectl delete replicaset <old-name> -n forkfinder`, or `kubectl rollout restart deployment/<name> -n forkfinder` |
+| Only 6 pods running, Kafka/workers missing | Manifests 10–12 not applied | Re-run Step 3 and Steps 5 from Part H |
 
 ---
 
@@ -393,7 +464,7 @@ done
 
 | # | Screenshot | Where to capture |
 |---|---|---|
-| 1 | ECR console — 5 repositories | AWS Console → ECR |
+| 1 | ECR console — 6 repositories | AWS Console → ECR |
 | 2 | EKS cluster overview | AWS Console → EKS → Clusters → forkfinder-cluster |
 | 3 | `kubectl get nodes` (Ready) | Terminal |
 | 4 | `kubectl get pods -n forkfinder` (all Running) | Terminal |

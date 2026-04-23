@@ -15,8 +15,10 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  # On EKS this will dynamically provision an EBS gp2 volume.
-  # storageClassName: gp2  # uncomment on EKS if the default StorageClass is not gp2
+  # Explicitly request gp2 so the PVC is not stuck in Pending
+  # if the cluster has no default StorageClass set.
+  # gp2 is the standard EBS class on EKS; change to gp3 if your cluster uses it.
+  storageClassName: gp2
 
 ---
 apiVersion: apps/v1
