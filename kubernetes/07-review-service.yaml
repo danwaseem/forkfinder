@@ -1,0 +1,121 @@
+# ── Review Service — Deployment + Service ─────────────────────────────────────
+#
+# Logical scope : review CRUD, photo uploads, rating aggregation.
+# Routes served : /reviews/*, /restaurants/{id}/reviews
+#
+# IMAGE: Replace <YOUR_ECR_REGISTRY> before applying.
+# ──────────────────────────────────────────────────────────────────────────────
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-service
+  namespace: forkfinder
+  labels:
+    app: review-service
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: review-service
+  template:
+    metadata:
+      labels:
+        app: review-service
+        tier: backend
+    spec:
+      containers:
+        - name: review-service
+          image: <YOUR_ECR_REGISTRY>/forkfinder/review-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SERVICE_NAME
+              value: "review-service"
+            - name: MONGODB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: MONGODB_URL
+            - name: MONGODB_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: MONGODB_DB_NAME
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: forkfinder-secrets
+                  key: SECRET_KEY
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: forkfinder-secrets
+                  key: TAVILY_API_KEY
+            - name: ALGORITHM
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: ALGORITHM
+            - name: ACCESS_TOKEN_EXPIRE_MINUTES
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: ACCESS_TOKEN_EXPIRE_MINUTES
+            - name: UPLOAD_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: UPLOAD_DIR
+            - name: FRONTEND_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: FRONTEND_URL
+            - name: OLLAMA_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: OLLAMA_MODEL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: review-service
+  namespace: forkfinder
+  labels:
+    app: review-service
+spec:
+  selector:
+    app: review-service
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

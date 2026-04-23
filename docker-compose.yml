@@ -1,0 +1,163 @@
+version: "3.9"
+
+# ── ForkFinder — full-stack local Docker environment ──────────────────────────
+#
+# Quickstart:
+#   cp .env.docker.example .env.docker
+#   # edit .env.docker if needed (defaults work out of the box)
+#   docker compose --env-file .env.docker up --build
+#
+# Services:
+#   mongodb            → localhost:27017
+#   zookeeper          → localhost:2181
+#   kafka              → localhost:9092 (internal) / localhost:9093 (external/host)
+#   backend            → localhost:8000  (API + /docs Swagger UI)
+#   review-worker      → (no port — Kafka consumer)
+#   restaurant-worker  → (no port — Kafka consumer)
+#   frontend           → localhost:80
+#
+# To run without Kafka:
+#   docker compose --env-file .env.docker up mongodb backend frontend
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── MongoDB 7 ────────────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7.0
+    container_name: forkfinder-mongodb
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Zookeeper (required by Kafka) ────────────────────────────────────────────
+  zookeeper:
+    image: bitnami/zookeeper:3.8
+    container_name: forkfinder-zookeeper
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "2181:2181"
+    restart: unless-stopped
+
+  # ── Kafka broker ─────────────────────────────────────────────────────────────
+  #
+  # Two listeners:
+  #   PLAINTEXT  (kafka:9092)      — used by containers inside Docker network
+  #   EXTERNAL   (localhost:9093)  — used when connecting from the host machine
+  kafka:
+    image: bitnami/kafka:3.3
+    container_name: forkfinder-kafka
+    ports:
+      - "9092:9092"    # internal listener (containers)
+      - "9093:9093"    # external listener (host machine for testing)
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,EXTERNAL://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── Backend API (all four logical services in one monolith) ─────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: forkfinder-backend
+    environment:
+      MONGODB_URL: "mongodb://mongodb:27017"
+      MONGODB_DB_NAME: "restaurant_platform"
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production-min-32-chars}
+      ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "43200"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      UPLOAD_DIR: "uploads"
+      FRONTEND_URL: "http://localhost"
+      # Kafka — containers connect via the internal listener
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Review Worker (Kafka consumer) ──────────────────────────────────────────
+  review-worker:
+    build:
+      context: .
+      dockerfile: backend/workers/Dockerfile
+    container_name: forkfinder-review-worker
+    command: ["python", "-m", "workers.review_worker"]
+    environment:
+      MONGODB_URL: "mongodb://mongodb:27017"
+      MONGODB_DB_NAME: "restaurant_platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "review-worker-group"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Restaurant Worker (Kafka consumer) ──────────────────────────────────────
+  restaurant-worker:
+    build:
+      context: .
+      dockerfile: backend/workers/Dockerfile
+    container_name: forkfinder-restaurant-worker
+    command: ["python", "-m", "workers.restaurant_worker"]
+    environment:
+      MONGODB_URL: "mongodb://mongodb:27017"
+      MONGODB_DB_NAME: "restaurant_platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "restaurant-worker-group"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Frontend (React + Nginx) ─────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: forkfinder-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mongo_data:

@@ -1,0 +1,9 @@
+# ── DEPRECATED — do not apply this file ───────────────────────────────────────
+#
+# This file is retained only as a historical artifact from Lab 1.
+# The database has been migrated to MongoDB for Lab 2.
+#
+# Use 03-mongodb.yaml instead:
+#   kubectl apply -f kubernetes/03-mongodb.yaml
+#
+# ──────────────────────────────────────────────────────────────────────────────

@@ -5,12 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .database import Base, engine
+from .database import get_db, init_indexes
 from .middleware.exception_handler import register_exception_handlers
 from .routers import ai_assistant, auth, favorites, history, owner, preferences, restaurants, reviews, users
 
-# Create all tables
-Base.metadata.create_all(bind=engine)
+# Ensure MongoDB indexes exist (idempotent — safe to call on every startup)
+init_indexes(get_db())
 
 # Ensure upload directories exist
 for sub in ("profiles", "restaurants", "reviews"):
@@ -122,7 +122,7 @@ app = FastAPI(
     title="ForkFinder API",
     description=(
         "## ForkFinder — Restaurant Discovery & Review Platform\n\n"
-        "A Yelp-inspired REST API built with **FastAPI + SQLAlchemy + MySQL**.\n\n"
+        "A Yelp-inspired REST API built with **FastAPI + PyMongo + MongoDB**.\n\n"
         "### Base URL\n"
         "`http://localhost:8000`\n\n"
         "### Authentication\n"

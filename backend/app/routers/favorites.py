@@ -12,10 +12,8 @@ Access:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models.user import User
 from ..schemas.favorites import FavoritesListResponse, FavoriteToggleResponse
 from ..services import favorites_service
 from ..utils.auth import get_current_user
@@ -59,8 +57,8 @@ def _handle(exc: Exception) -> None:
 )
 def add_favorite(
     restaurant_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Mark a restaurant as a favorite for the authenticated user.
@@ -95,8 +93,8 @@ def add_favorite(
 )
 def remove_favorite(
     restaurant_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Remove a restaurant from the authenticated user's favorites.
@@ -147,8 +145,8 @@ def remove_favorite(
     },
 )
 def get_favorites(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Return all restaurants the authenticated user has favorited,

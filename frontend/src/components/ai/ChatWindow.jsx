@@ -22,12 +22,12 @@ import { useEffect, useRef, useState } from 'react'
 import ChatRecommendationCard from './ChatRecommendationCard'
 
 const DEFAULT_SUGGESTIONS = [
-  '🍝  Best Italian near me',
-  '💸  Cheap eats under $$',
-  '💑  Romantic dinner spots',
-  '🥗  Great vegan options',
-  '🎉  Good for groups',
-  '🌮  Quick Mexican food',
+  '🍝  Best Italian in San Jose',
+  '🍜  Ramen spots in San Jose',
+  '💑  Romantic dinner in San Jose',
+  '🥗  Vegan-friendly in San Jose',
+  '🎉  Good for groups in San Jose',
+  '🌮  Best Mexican tacos in San Jose',
 ]
 
 // ── Typing dots ──────────────────────────────────────────────────────────────

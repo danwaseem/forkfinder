@@ -1,21 +1,18 @@
 """
-Preferences service layer.
+Preferences service layer — MongoDB version.
 
-All database read/write logic for user preferences lives here.
-Both the preferences router and the AI assistant service import from this module.
+Preferences are now embedded as a 'preferences' subdocument inside each user
+document.  No separate collection is needed.
 
-Public API:
-    get(db, user_id)                    -> UserPreferencesOut
-    upsert(db, user_id, payload)        -> UserPreferencesOut
-    get_for_ai(db, user_id)             -> dict  (the ai_context dict)
+Public API (unchanged):
+    get(db, user_id)           -> UserPreferencesOut
+    upsert(db, user_id, payload) -> UserPreferencesOut
+    get_for_ai(db, user_id)    -> dict
 """
 
-import json
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict
 
-from sqlalchemy.orm import Session
-
-from ..models.user import UserPreferences
 from ..schemas.preferences import (
     AmbianceType,
     CuisineType,
@@ -28,135 +25,75 @@ from ..schemas.preferences import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+def _prefs_to_out(prefs: dict) -> UserPreferencesOut:
+    """Convert a preferences subdocument dict to UserPreferencesOut."""
+    if not prefs:
+        return UserPreferencesOut()
 
-def _safe_json_load(value: Optional[str]) -> list:
-    """Parse a JSON-encoded list column; return [] on missing/invalid data."""
-    if not value:
-        return []
-    try:
-        result = json.loads(value)
-        return result if isinstance(result, list) else []
-    except (ValueError, TypeError):
-        return []
-
-
-def _row_to_out(row: UserPreferences) -> UserPreferencesOut:
-    """Convert a UserPreferences ORM row to UserPreferencesOut."""
-    raw_cuisines  = _safe_json_load(row.cuisine_preferences)
-    raw_dietary   = _safe_json_load(row.dietary_restrictions)
-    raw_ambiance  = _safe_json_load(row.ambiance_preferences)
-    raw_locations = _safe_json_load(row.preferred_locations)
-
-    # Normalise stored strings back to enum instances (legacy data may have
-    # been written without enum validation, so we use the tolerant normaliser).
-    cuisines = _normalise_enum_list(raw_cuisines, CuisineType)
-    dietary  = _normalise_enum_list(raw_dietary,  DietaryRestriction)
-    ambiance = _normalise_enum_list(raw_ambiance, AmbianceType)
+    cuisines = _normalise_enum_list(prefs.get("cuisine_preferences", []), CuisineType)
+    dietary  = _normalise_enum_list(prefs.get("dietary_restrictions", []),  DietaryRestriction)
+    ambiance = _normalise_enum_list(prefs.get("ambiance_preferences", []),  AmbianceType)
 
     try:
-        price = PriceRange(row.price_range) if row.price_range else None
+        price = PriceRange(prefs["price_range"]) if prefs.get("price_range") else None
     except ValueError:
         price = None
 
     try:
-        sort = SortPreference(row.sort_preference) if row.sort_preference else SortPreference.rating
+        sort = SortPreference(prefs["sort_preference"]) if prefs.get("sort_preference") else SortPreference.rating
     except ValueError:
         sort = SortPreference.rating
 
     return UserPreferencesOut(
         cuisine_preferences=cuisines,
         price_range=price,
-        search_radius=row.search_radius or 10,
-        preferred_locations=[str(loc) for loc in raw_locations],
+        search_radius=prefs.get("search_radius", 10),
+        preferred_locations=prefs.get("preferred_locations", []),
         dietary_restrictions=dietary,
         ambiance_preferences=ambiance,
         sort_preference=sort,
-        updated_at=row.updated_at,
+        updated_at=prefs.get("updated_at"),
     )
 
 
-def _empty_out() -> UserPreferencesOut:
-    return UserPreferencesOut()
+def get(db, user_id: int) -> UserPreferencesOut:
+    user_doc = db.users.find_one({"_id": user_id}, {"preferences": 1})
+    if not user_doc:
+        return UserPreferencesOut()
+    return _prefs_to_out(user_doc.get("preferences") or {})
 
 
-# ---------------------------------------------------------------------------
-# Public service functions
-# ---------------------------------------------------------------------------
+def upsert(db, user_id: int, payload: UserPreferencesIn) -> UserPreferencesOut:
+    user_doc = db.users.find_one({"_id": user_id}, {"preferences": 1})
+    existing = (user_doc or {}).get("preferences") or {}
 
-def get(db: Session, user_id: int) -> UserPreferencesOut:
-    """
-    Fetch preferences for *user_id*.
-
-    Returns an empty UserPreferencesOut (all defaults) if no row exists yet,
-    so callers never need to handle None.
-    """
-    row = db.query(UserPreferences).filter(UserPreferences.user_id == user_id).first()
-    if row is None:
-        return _empty_out()
-    return _row_to_out(row)
-
-
-def upsert(db: Session, user_id: int, payload: UserPreferencesIn) -> UserPreferencesOut:
-    """
-    Create or update preferences for *user_id*.
-
-    Only fields that are explicitly provided (not None) are written.
-    Fields not included in *payload* keep their existing values.
-    """
-    row = db.query(UserPreferences).filter(UserPreferences.user_id == user_id).first()
-    if row is None:
-        row = UserPreferences(user_id=user_id)
-        db.add(row)
+    updates: Dict[str, Any] = {}
 
     if payload.cuisine_preferences is not None:
-        row.cuisine_preferences = json.dumps([c.value for c in payload.cuisine_preferences])
-
+        updates["preferences.cuisine_preferences"] = [c.value for c in payload.cuisine_preferences]
     if payload.price_range is not None:
-        row.price_range = payload.price_range.value
-
+        updates["preferences.price_range"] = payload.price_range.value
     if payload.search_radius is not None:
-        row.search_radius = payload.search_radius
-
+        updates["preferences.search_radius"] = payload.search_radius
     if payload.preferred_locations is not None:
-        row.preferred_locations = json.dumps(payload.preferred_locations)
-
+        updates["preferences.preferred_locations"] = payload.preferred_locations
     if payload.dietary_restrictions is not None:
-        row.dietary_restrictions = json.dumps([d.value for d in payload.dietary_restrictions])
-
+        updates["preferences.dietary_restrictions"] = [d.value for d in payload.dietary_restrictions]
     if payload.ambiance_preferences is not None:
-        row.ambiance_preferences = json.dumps([a.value for a in payload.ambiance_preferences])
-
+        updates["preferences.ambiance_preferences"] = [a.value for a in payload.ambiance_preferences]
     if payload.sort_preference is not None:
-        row.sort_preference = payload.sort_preference.value
+        updates["preferences.sort_preference"] = payload.sort_preference.value
 
-    db.commit()
-    db.refresh(row)
-    return _row_to_out(row)
+    updates["preferences.updated_at"] = datetime.utcnow()
+    updates["updated_at"] = datetime.utcnow()
+
+    db.users.update_one({"_id": user_id}, {"$set": updates})
+
+    # Re-fetch and return the merged result
+    updated_doc = db.users.find_one({"_id": user_id}, {"preferences": 1})
+    return _prefs_to_out((updated_doc or {}).get("preferences") or {})
 
 
-def get_for_ai(db: Session, user_id: int) -> Dict[str, Any]:
-    """
-    Return the ``ai_context`` dict for the AI assistant.
-
-    This is the only function ai_service.py needs to call.
-    The dict shape is stable — the AI prompt builder can destructure it
-    without needing to know about Pydantic models or enums.
-
-    Example output:
-    ```json
-    {
-      "has_preferences": true,
-      "cuisine": ["Italian", "Japanese"],
-      "price_range": "$$",
-      "search_radius_miles": 15,
-      "preferred_locations": ["San Francisco"],
-      "dietary_needs": ["Gluten-Free"],
-      "ambiance": ["Casual", "Outdoor Seating"],
-      "sort_by": "rating"
-    }
-    ```
-    """
+def get_for_ai(db, user_id: int) -> Dict[str, Any]:
+    """Return the ai_context dict used by the AI assistant service."""
     return get(db, user_id).ai_context

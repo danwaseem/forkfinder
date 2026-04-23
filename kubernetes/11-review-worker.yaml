@@ -1,0 +1,54 @@
+# ── Review Worker — Kafka consumer ───────────────────────────────────────────
+#
+# Consumes: review.created | review.updated | review.deleted
+# Writes:   review_events table (audit log)
+#
+# IMAGE: Replace <YOUR_ECR_REGISTRY> before applying.
+# ──────────────────────────────────────────────────────────────────────────────
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-worker
+  namespace: forkfinder
+  labels:
+    app: review-worker
+    tier: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: review-worker
+  template:
+    metadata:
+      labels:
+        app: review-worker
+        tier: worker
+    spec:
+      containers:
+        - name: review-worker
+          image: <YOUR_ECR_REGISTRY>/forkfinder/workers:latest
+          imagePullPolicy: Always
+          command: ["python", "-m", "workers.review_worker"]
+          env:
+            - name: MONGODB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: MONGODB_URL
+            - name: MONGODB_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: forkfinder-config
+                  key: MONGODB_DB_NAME
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: KAFKA_GROUP_ID
+              value: "review-worker-group"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"

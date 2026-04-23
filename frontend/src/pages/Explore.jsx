@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useDispatch } from 'react-redux'
 import api from '../services/api'
 import RestaurantCard from '../components/restaurants/RestaurantCard'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import { useAuth } from '../context/AuthContext'
 import { useChat } from '../hooks/useChat'
 import ChatWindow from '../components/ai/ChatWindow'
+import { setRestaurants as setRestaurantsStore } from '../store/slices/restaurantsSlice'
 
 const CUISINES     = ['', 'Italian', 'Japanese', 'Mexican', 'Indian', 'American', 'Thai', 'Chinese', 'Mediterranean', 'French', 'Korean', 'Vietnamese', 'Greek']
 const PRICE_RANGES = ['', '$', '$$', '$$$', '$$$$']
@@ -98,6 +100,7 @@ function ExploreAIPanel({ open, onClose }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Explore() {
   const { user }                            = useAuth()
+  const dispatch                            = useDispatch()
   const [searchParams, setSearchParams]     = useSearchParams()
   const [restaurants, setRestaurants]       = useState([])
   const [total, setTotal]                   = useState(0)
@@ -128,6 +131,7 @@ export default function Explore() {
       setRestaurants(data.items || [])
       setTotal(data.total  || 0)
       setPages(data.pages  || 1)
+      dispatch(setRestaurantsStore({ items: data.items || [], total: data.total || 0, pages: data.pages || 1 }))
     } catch {
       setError('Failed to load restaurants.')
     } finally {

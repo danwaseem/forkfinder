@@ -18,28 +18,18 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..database import get_db
+from ..database import get_db, _ns
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# tokenUrl points to the OAuth2-compatible form-data endpoint used by Swagger UI.
-# The regular login endpoints (/auth/user/login, /auth/owner/login) accept JSON
-# and are unchanged; only the Swagger "Authorize" button uses /auth/token.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
-
-# Same scheme but auto_error=False — returns None instead of raising 401
-# when no token is present.  Used by public endpoints that enrich responses
-# for authenticated callers (e.g. is_favorited on restaurant listings).
-oauth2_scheme_optional = OAuth2PasswordBearer(
-    tokenUrl="/auth/token", auto_error=False
-)
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 
 # ---------------------------------------------------------------------------
-# Password helpers
+# Password helpers — bcrypt preserved via passlib (unchanged from Lab 1)
 # ---------------------------------------------------------------------------
 
 def hash_password(password: str) -> str:
@@ -55,11 +45,6 @@ def verify_password(plain: str, hashed: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    Encode a JWT.
-
-    ``data`` should include at minimum ``{"sub": str(user.id), "role": user.role}``.
-    """
     to_encode = data.copy()
     expire = datetime.utcnow() + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -85,16 +70,14 @@ def decode_token(token: str) -> dict:
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ):
     """
-    Dependency: resolve the Bearer token to a User row.
-
+    Resolve the Bearer token to a MongoDB user document.
+    Returns a MongoDoc with .id, .email, .role, etc. attributes.
     Raises 401 if the token is missing, malformed, expired, or the user
     no longer exists in the database.
     """
-    from ..models.user import User
-
     payload = decode_token(token)
     user_id = payload.get("sub")
     if user_id is None:
@@ -103,7 +86,7 @@ def get_current_user(
             detail="Invalid token payload.",
         )
 
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    user = _ns(db.users.find_one({"_id": int(user_id)}))
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -114,13 +97,10 @@ def get_current_user(
 
 def get_optional_user(
     token: Optional[str] = Depends(oauth2_scheme_optional),
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> Optional[object]:
     """
-    Dependency: resolve the Bearer token to a User if present, else return None.
-
-    Use on public endpoints that can optionally enrich their response for
-    authenticated callers — e.g. ``is_favorited`` on restaurant listings.
+    Resolve the Bearer token to a user if present, else return None.
     Never raises 401.
     """
     if not token:
@@ -132,12 +112,6 @@ def get_optional_user(
 
 
 def require_owner(user=Depends(get_current_user)):
-    """
-    Dependency: require the authenticated user to be a restaurant owner.
-
-    Raises 403 if the user's role is not ``"owner"``.
-    Use on any endpoint under ``/owner/*``.
-    """
     if user.role != "owner":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -147,12 +121,6 @@ def require_owner(user=Depends(get_current_user)):
 
 
 def require_user(user=Depends(get_current_user)):
-    """
-    Dependency: require the authenticated user to be a reviewer (role == "user").
-
-    Raises 403 if the user's role is not ``"user"``.
-    Use on endpoints that should not be accessible to restaurant owners.
-    """
     if user.role != "user":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

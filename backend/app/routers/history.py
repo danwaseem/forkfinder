@@ -12,10 +12,8 @@ Both lists are ordered newest-first (created_at DESC).
 """
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models.user import User
 from ..schemas.history import HistoryResponse
 from ..services import history_service
 from ..utils.auth import get_current_user
@@ -70,8 +68,8 @@ router = APIRouter(prefix="/history", tags=["History"])
     },
 )
 def get_history(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Return the authenticated user's activity history.

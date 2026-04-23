@@ -10,10 +10,8 @@ All business logic lives in services/preferences_service.py.
 """
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models.user import User
 from ..schemas.preferences import (
     UserPreferencesIn,
     UserPreferencesOut,
@@ -59,8 +57,8 @@ router = APIRouter(prefix="/preferences", tags=["User Preferences"])
     },
 )
 def get_preferences(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Return the authenticated user's dining preferences.
@@ -85,8 +83,8 @@ def get_preferences(
 )
 def update_preferences(
     payload: UserPreferencesIn,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     Create or update dining preferences.  All fields are **optional** —

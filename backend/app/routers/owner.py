@@ -14,13 +14,11 @@ Endpoints:
   GET  /owner/reviews                      — recent reviews across all owned restaurants
 """
 
-import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models.user import User
 from ..schemas.owner import (
     OwnerDashboardResponse,
     OwnerRestaurantsListResponse,
@@ -36,7 +34,7 @@ from ..utils.file_upload import save_upload
 router = APIRouter(prefix="/owner", tags=["Owner Dashboard"])
 
 
-def _require_owner(current_user: User = Depends(get_current_user)) -> User:
+def _require_owner(current_user=Depends(get_current_user)):
     if current_user.role != "owner":
         raise HTTPException(status_code=403, detail="Owner access required")
     return current_user
@@ -57,7 +55,7 @@ def _handle(exc: Exception) -> None:
 # Owner profile
 # ---------------------------------------------------------------------------
 
-def _build_profile_response(current_user: User, db: Session) -> OwnerProfileResponse:
+def _build_profile_response(current_user, db) -> OwnerProfileResponse:
     from ..models.restaurant import Restaurant
     restaurants = (
         db.query(Restaurant)
@@ -125,8 +123,8 @@ def _build_profile_response(current_user: User, db: Session) -> OwnerProfileResp
     },
 )
 def get_owner_profile(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """Return the owner's profile plus a summary of every restaurant they own or claimed."""
     return _build_profile_response(current_user, db)
@@ -143,8 +141,8 @@ def get_owner_profile(
 )
 def update_owner_profile(
     payload: OwnerProfileUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """Update one or more owner profile fields. All fields are optional."""
     if payload.email and payload.email != current_user.email:
@@ -168,8 +166,8 @@ def update_owner_profile(
 )
 def upload_owner_photo(
     file: UploadFile = File(..., description="JPEG, PNG, WEBP or GIF — max 5 MB"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """Upload a profile photo for the restaurant owner account."""
     url = save_upload(file, "profiles")
@@ -237,8 +235,8 @@ def upload_owner_photo(
     },
 )
 def get_dashboard(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """
     Aggregate statistics across **all** restaurants owned or claimed by this owner.
@@ -296,8 +294,8 @@ def get_dashboard(
     },
 )
 def list_owner_restaurants(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """Return all restaurants the owner created or claimed, with current stats."""
     return owner_service.get_restaurants(db, owner_id=current_user.id)
@@ -316,8 +314,8 @@ def list_owner_restaurants(
 def update_owned_restaurant(
     restaurant_id: int,
     payload: RestaurantUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """
     Partial update of an owned or claimed restaurant.
@@ -369,8 +367,8 @@ def update_owned_restaurant(
 )
 def restaurant_stats(
     restaurant_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """
     Detailed stats for a single owned restaurant:
@@ -399,8 +397,8 @@ def list_restaurant_reviews(
     restaurant_id: int,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """
     Paginated list of reviews for a specific owned restaurant.
@@ -426,8 +424,8 @@ def list_restaurant_reviews(
 )
 def claim_restaurant(
     restaurant_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """
     Claim ownership of an unclaimed restaurant listing.
@@ -479,8 +477,8 @@ def claim_restaurant(
     },
 )
 def all_owner_reviews(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(_require_owner),
+    db=Depends(get_db),
+    current_user=Depends(_require_owner),
 ):
     """
     The 50 most recent reviews across all restaurants owned or claimed by this owner.

@@ -1,23 +1,33 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useDispatch } from 'react-redux'
 import api from '../services/api'
 import RestaurantCard from '../components/restaurants/RestaurantCard'
 import LoadingSpinner from '../components/common/LoadingSpinner'
+import { setFavorites, removeFavorite } from '../store/slices/favoritesSlice'
 
 export default function Favorites() {
+  const dispatch = useDispatch()
   const [items, setItems] = useState([])   // FavoriteItem[]  { favorited_at, restaurant }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
     api.get('/favorites/me')
-      .then(({ data }) => setItems(data.items ?? []))
+      .then(({ data }) => {
+        const favItems = data.items ?? []
+        setItems(favItems)
+        dispatch(setFavorites(favItems))
+      })
       .catch(() => setError('Failed to load favorites'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [dispatch])
 
   const handleFavoriteToggle = (restaurantId, isFav) => {
-    if (!isFav) setItems((prev) => prev.filter((item) => item.restaurant.id !== restaurantId))
+    if (!isFav) {
+      setItems((prev) => prev.filter((item) => item.restaurant.id !== restaurantId))
+      dispatch(removeFavorite(restaurantId))
+    }
   }
 
   if (loading) return <LoadingSpinner />

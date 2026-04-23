@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forkfinder-config
+  namespace: forkfinder
+data:
+  ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "43200"
+  UPLOAD_DIR: "uploads"
+  MONGODB_URL: "mongodb://mongodb:27017"
+  MONGODB_DB_NAME: "restaurant_platform"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  OLLAMA_MODEL: "llama3.2"
+  # Within the cluster the frontend service is reachable by its K8s Service name.
+  # Update FRONTEND_URL to your actual external hostname/IP after deployment.
+  FRONTEND_URL: "http://frontend-service"

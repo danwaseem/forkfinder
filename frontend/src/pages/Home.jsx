@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useDispatch } from 'react-redux'
 import api from '../services/api'
 import RestaurantCard from '../components/restaurants/RestaurantCard'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import { useAuth } from '../context/AuthContext'
 import { useChat } from '../hooks/useChat'
 import ChatWindow from '../components/ai/ChatWindow'
+import { setFeatured as setFeaturedStore } from '../store/slices/restaurantsSlice'
 
 const CUISINES = ['Italian', 'Japanese', 'Mexican', 'Indian', 'American', 'Thai', 'Chinese', 'Mediterranean']
 
@@ -83,8 +85,9 @@ function QuickStat({ label, value, icon, to }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Home() {
-  const { user }    = useAuth()
-  const navigate    = useNavigate()
+  const { user }      = useAuth()
+  const navigate      = useNavigate()
+  const dispatch      = useDispatch()
   const [featured, setFeatured] = useState([])
   const [loading, setLoading]   = useState(true)
   const [searchQ, setSearchQ]   = useState('')
@@ -92,7 +95,11 @@ export default function Home() {
 
   useEffect(() => {
     api.get('/restaurants?limit=6&sort=rating')
-      .then(({ data }) => setFeatured(data.items || []))
+      .then(({ data }) => {
+        const items = data.items || []
+        setFeatured(items)
+        dispatch(setFeaturedStore(items))
+      })
       .finally(() => setLoading(false))
     if (user) {
       api.get('/users/me/history').then(({ data }) => setStats(data)).catch(() => {})

@@ -1,0 +1,70 @@
+# ── Frontend — Deployment + Service ──────────────────────────────────────────
+#
+# React SPA served by Nginx.
+# The VITE_API_URL must be baked into the image at build time (Vite inlines
+# environment variables during `npm run build`). Rebuild the image whenever
+# the backend API hostname changes.
+#
+# IMAGE: Replace <YOUR_ECR_REGISTRY> before applying.
+# ──────────────────────────────────────────────────────────────────────────────
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: forkfinder
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: <YOUR_ECR_REGISTRY>/forkfinder/frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: forkfinder
+  labels:
+    app: frontend
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+  # LoadBalancer provisions an AWS ELB that gives you a public hostname.
+  # Change to NodePort or ClusterIP if you are using an Ingress controller instead.
+  type: LoadBalancer

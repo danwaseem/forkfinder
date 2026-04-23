@@ -1,10 +1,19 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { useDispatch } from 'react-redux'
 import api, { tokenStore } from '../services/api'
 import { authApi } from '../services/auth'
+import {
+  loginSuccess,
+  logout as authLogout,
+  updateUser as authUpdateUser,
+  rehydrate,
+} from '../store/slices/authSlice'
+import { clearFavorites } from '../store/slices/favoritesSlice'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
+  const dispatch = useDispatch()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -19,13 +28,14 @@ export function AuthProvider({ children }) {
         // Also set on the Axios default so requests made before the first
         // interceptor run already have the token.
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        dispatch(rehydrate({ user: parsed, token }))
       } catch {
         // Corrupted storage — start fresh
         tokenStore.clear()
       }
     }
     setLoading(false)
-  }, [])
+  }, [dispatch])
 
   // ── Persist a successful auth response ───────────────────────────────────
   const _persist = useCallback((data) => {
@@ -33,7 +43,8 @@ export function AuthProvider({ children }) {
     tokenStore.set(data.access_token, user)
     api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
     setUser(user)
-  }, [])
+    dispatch(loginSuccess({ user, token: data.access_token }))
+  }, [dispatch])
 
   // ── Public methods ────────────────────────────────────────────────────────
 
@@ -75,7 +86,9 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     tokenStore.clear()
     setUser(null)
-  }, [])
+    dispatch(authLogout())
+    dispatch(clearFavorites())
+  }, [dispatch])
 
   /**
    * Merge updates into the stored user object without a full reload.
@@ -90,7 +103,8 @@ export function AuthProvider({ children }) {
       localStorage.setItem('user', JSON.stringify(next))
       return next
     })
-  }, [])
+    dispatch(authUpdateUser(updates))
+  }, [dispatch])
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser }}>

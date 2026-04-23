@@ -39,15 +39,11 @@ Cost Profile (gpt-3.5-turbo)
 
 import json
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
-
 from ..config import settings
-from ..models.conversation import Conversation, ConversationMessage
-from ..models.restaurant import Restaurant
-from ..models.user import User
+from ..database import _next_id, _ns
 from ..schemas.ai_assistant import (
     ChatResponse,
     ExtractedFilters,
@@ -65,21 +61,27 @@ from . import prompts as P
 _CUISINE_MAP: Dict[str, str] = {
     "italian": "Italian", "pasta": "Italian", "pizza": "Italian",
     "japanese": "Japanese", "sushi": "Japanese", "ramen": "Japanese",
+    "tempura": "Japanese", "teriyaki": "Japanese", "katsu": "Japanese",
+    "udon": "Japanese", "soba": "Japanese", "yakitori": "Japanese", "izakaya": "Japanese",
     "chinese": "Chinese", "dim sum": "Chinese", "dumpling": "Chinese",
     "mexican": "Mexican", "taco": "Mexican", "burrito": "Mexican",
-    "indian": "Indian", "curry": "Indian",
+    "enchilada": "Mexican", "birria": "Mexican", "carnitas": "Mexican", "tamale": "Mexican",
+    "indian": "Indian", "curry": "Indian", "dosa": "Indian", "tikka": "Indian",
+    "naan": "Indian", "biryani": "Indian", "masala": "Indian",
     "thai": "Thai", "pad thai": "Thai",
     "american": "American", "burger": "American", "bbq": "American",
     "barbecue": "American", "steak": "American", "steakhouse": "American",
-    "french": "French", "bistro": "French",
+    "french": "French", "bistro": "French", "crepe": "French",
     "mediterranean": "Mediterranean", "greek": "Mediterranean",
-    "korean": "Korean",
-    "vietnamese": "Vietnamese", "pho": "Vietnamese",
+    "falafel": "Mediterranean", "hummus": "Mediterranean", "gyro": "Mediterranean",
+    "kebab": "Mediterranean",
+    "korean": "Korean", "bibimbap": "Korean", "bulgogi": "Korean", "kimchi": "Korean",
+    "vietnamese": "Vietnamese", "pho": "Vietnamese", "banh mi": "Vietnamese",
     "spanish": "Spanish", "tapas": "Spanish",
     "middle eastern": "Middle Eastern", "lebanese": "Middle Eastern",
     "turkish": "Turkish",
     "ethiopian": "Ethiopian",
-    "peruvian": "Peruvian",
+    "peruvian": "Peruvian", "ceviche": "Peruvian",
     "seafood": "Seafood", "fish": "Seafood",
     "vegetarian": "Vegetarian",
     "vegan": "Vegan",
@@ -108,7 +110,9 @@ _OCCASION_MAP: Dict[str, str] = {
     "anniversary": "anniversary",
     "birthday": "birthday", "celebration": "birthday",
     "business lunch": "business", "work lunch": "business",
+    "team lunch": "business", "team dinner": "business",
     "business dinner": "business", "client dinner": "business",
+    "colleagues": "business", "coworkers": "business",
     "family dinner": "family", "family": "family",
     "brunch": "brunch",
     "late night": "late night", "late-night": "late night",
@@ -131,16 +135,43 @@ _AMBIANCE_MAP: Dict[str, str] = {
 }
 
 _WEB_TRIGGERS = {
-    "hours", "open now", "open today", "open late", "closing time",
-    "event", "events", "live music", "special", "specials",
-    "trending", "new restaurant", "just opened", "recently opened",
+    "hours", "open now", "open today", "open late", "open tonight", "closing time",
+    "right now",
+    "event", "events", "live music", "food festival", "this weekend",
+    "today's special", "daily special", "weekly special",
+    "trending", "new restaurant", "new place", "just opened", "recently opened",
     "what's new", "popular right now", "best right now",
+    "reservation", "book a table",
+    "michelin",
 }
 
 # Location patterns: "in/near/around <City>" or "in <City>, <State>"
+# Uses original (mixed-case) text, so title-case city names are captured.
 _LOCATION_RE = re.compile(
     r"\b(?:in|near|around|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
 )
+
+# Known Bay Area / South Bay cities for lowercase bare-name detection.
+# Checked against the already-lowercased `text` variable in extract_filters.
+_KNOWN_CITIES: Dict[str, str] = {
+    "san jose": "San Jose",
+    "san francisco": "San Francisco",
+    "oakland": "Oakland",
+    "berkeley": "Berkeley",
+    "sunnyvale": "Sunnyvale",
+    "santa clara": "Santa Clara",
+    "mountain view": "Mountain View",
+    "palo alto": "Palo Alto",
+    "cupertino": "Cupertino",
+    "fremont": "Fremont",
+    "milpitas": "Milpitas",
+    "campbell": "Campbell",
+    "los gatos": "Los Gatos",
+    "saratoga": "Saratoga",
+    "downtown sj": "San Jose",
+    "south bay": "San Jose",
+    "silicon valley": "San Jose",
+}
 
 # Stop-words to exclude from keyword extraction
 _STOPWORDS = frozenset({
@@ -214,9 +245,16 @@ def extract_filters(
 
     # --- Location ---
     location: Optional[str] = None
+    # Primary: preposition + title-case city name (e.g. "in San Jose")
     loc_match = _LOCATION_RE.search(original)
     if loc_match:
         location = loc_match.group(1)
+    # Secondary: bare known-city detection in lowercased text (handles "san jose ramen")
+    if not location:
+        for city_lower, city_canonical in _KNOWN_CITIES.items():
+            if city_lower in text:
+                location = city_canonical
+                break
     # Fall back to user's first preferred location if none in message
     if not location and user_prefs.get("preferred_locations"):
         location = user_prefs["preferred_locations"][0]
@@ -225,8 +263,16 @@ def extract_filters(
     needs_web = any(trigger in text for trigger in _WEB_TRIGGERS)
     web_query: Optional[str] = None
     if needs_web:
-        base = f"{cuisine or ''} restaurant {location or ''} {message}".strip()
-        web_query = base[:150]
+        # Build a clean, focused query rather than including the raw message
+        loc_part = location or (user_prefs.get("preferred_locations") or [""])[0]
+        parts = [p for p in [cuisine, "restaurant", loc_part] if p]
+        # Add key terms from the user message (e.g. restaurant name, "hours")
+        msg_kw = [
+            w for w in re.findall(r"[a-z]+", message.lower())
+            if w not in _STOPWORDS and len(w) > 3
+        ][:4]
+        parts.extend(msg_kw)
+        web_query = " ".join(parts)[:150]
 
     # --- Residual keywords ---
     words = re.findall(r"[a-z]+", text)
@@ -260,70 +306,64 @@ def extract_filters(
 # 2. DB Search
 # ---------------------------------------------------------------------------
 
-def _search_restaurants(
-    db: Session,
-    filters: ExtractedFilters,
-    user_prefs: Dict,
-    limit: int = 10,
-) -> List[Restaurant]:
-    """
-    Build a SQLAlchemy query from extracted filters + user preferences.
-    Returns up to `limit` Restaurant ORM objects for scoring.
-    """
-    q = db.query(Restaurant)
+def _ilike(value: str) -> dict:
+    """Build a MongoDB case-insensitive regex filter for a single field value."""
+    return {"$regex": re.escape(value), "$options": "i"}
 
-    # Cuisine — prefer explicit query, fall back to user preference
+
+def _search_restaurants(db, filters: ExtractedFilters, user_prefs: Dict,
+                        limit: int = 10) -> list:
+    """
+    Build a MongoDB query from extracted filters + user preferences.
+    Returns up to `limit` MongoDoc restaurant objects for scoring.
+    """
+    mongo_filter: Dict[str, Any] = {}
+
+    # Cuisine
     cuisine = filters.cuisine
     if not cuisine and user_prefs.get("cuisine"):
         cuisine = user_prefs["cuisine"][0]
     if cuisine:
-        q = q.filter(Restaurant.cuisine_type.ilike(f"%{cuisine}%"))
+        mongo_filter["cuisine_type"] = _ilike(cuisine)
 
     # Price range
     price = filters.price_range
     if not price and user_prefs.get("price_range"):
         price = user_prefs["price_range"]
     if price:
-        q = q.filter(Restaurant.price_range == price)
+        mongo_filter["price_range"] = price
 
     # Location
     if filters.location:
-        q = q.filter(
-            or_(
-                Restaurant.city.ilike(f"%{filters.location}%"),
-                Restaurant.state.ilike(f"%{filters.location}%"),
-                Restaurant.zip_code.ilike(f"%{filters.location}%"),
-            )
-        )
-
-    # Keyword broadening — search name + description
-    if filters.keywords:
-        # Use the top 2 keywords to avoid over-filtering
-        kw_filters = [
-            or_(
-                Restaurant.name.ilike(f"%{kw}%"),
-                Restaurant.description.ilike(f"%{kw}%"),
-            )
-            for kw in filters.keywords[:2]
+        loc = _ilike(filters.location)
+        mongo_filter["$or"] = [
+            {"city": loc}, {"state": loc}, {"zip_code": loc},
         ]
-        if len(kw_filters) == 1:
-            q = q.filter(kw_filters[0])
-        elif kw_filters:
-            q = q.filter(or_(*kw_filters))
 
-    results = q.order_by(Restaurant.avg_rating.desc()).limit(limit).all()
+    # Keyword broadening
+    if filters.keywords:
+        kw_conditions = []
+        for kw in filters.keywords[:2]:
+            k = _ilike(kw)
+            kw_conditions.extend([{"name": k}, {"description": k}])
+        if kw_conditions:
+            existing_or = mongo_filter.pop("$or", [])
+            if existing_or:
+                mongo_filter["$and"] = [{"$or": existing_or}, {"$or": kw_conditions}]
+            else:
+                mongo_filter["$or"] = kw_conditions
 
-    # If the filtered query returned nothing, broaden: drop cuisine/price filter
+    docs = list(db.restaurants.find(mongo_filter).sort("avg_rating", -1).limit(limit))
+    results = [_ns(d) for d in docs]
+
+    # Broaden if nothing found with cuisine/price filter
     if not results and (cuisine or price):
-        broad_q = db.query(Restaurant)
+        broad_filter: Dict[str, Any] = {}
         if filters.location:
-            broad_q = broad_q.filter(
-                or_(
-                    Restaurant.city.ilike(f"%{filters.location}%"),
-                    Restaurant.state.ilike(f"%{filters.location}%"),
-                )
-            )
-        results = broad_q.order_by(Restaurant.avg_rating.desc()).limit(limit).all()
+            loc = _ilike(filters.location)
+            broad_filter["$or"] = [{"city": loc}, {"state": loc}]
+        broad_docs = list(db.restaurants.find(broad_filter).sort("avg_rating", -1).limit(limit))
+        results = [_ns(d) for d in broad_docs]
 
     return results
 
@@ -402,7 +442,7 @@ def _score(
 
 
 def rank_restaurants(
-    restaurants: List[Restaurant],
+    restaurants: list,
     filters: ExtractedFilters,
     user_prefs: Dict,
 ) -> List[RestaurantRecommendation]:
@@ -411,10 +451,7 @@ def rank_restaurants(
     for r in restaurants:
         s = _score(r, filters, user_prefs)
         reasons = _build_match_reasons(r, filters, user_prefs)
-        try:
-            photos = json.loads(r.photos) if r.photos else []
-        except Exception:
-            photos = []
+        photos = r.photos or []  # MongoDB stores as native array
         scored.append(
             RestaurantRecommendation(
                 id=r.id,
@@ -665,18 +702,26 @@ def _no_llm_response(
 
     if _results_are_weak(recs):
         applied = P.build_applied_filters_block(filters)
-        suggestion = (
-            f"try removing the {'cuisine' if filters.cuisine else 'price'} filter"
-            if (filters.cuisine or filters.price_range) else
-            "try a different city or broaden what you're looking for"
-        )
-        return {
-            "assistant_message": (
+        if not (filters.cuisine or filters.price_range or filters.location):
+            # No filters at all — the query was too open to return strong results
+            msg = (
+                "I wasn't able to find a strong match for that search. "
+                "Let me know what city you're in or what cuisine you're craving "
+                "and I'll find you something good right away."
+            )
+        else:
+            suggestion = (
+                f"try removing the {'cuisine' if filters.cuisine else 'price'} filter"
+                if (filters.cuisine or filters.price_range) else
+                "try a different city or broaden what you're looking for"
+            )
+            msg = (
                 f"I searched for {applied} but couldn't find a strong match "
                 f"in our database. You might want to {suggestion}. "
-                "I can also look for the highest-rated restaurants nearby "
-                "if you tell me more about what you're in the mood for."
-            ),
+                "Tell me more about what you're in the mood for and I'll look again."
+            )
+        return {
+            "assistant_message": msg,
             "reasoning": f"No strong matches for: {applied}",
             "follow_up_question": "Want me to broaden the search, or is there a specific cuisine you have in mind?",
         }
@@ -710,26 +755,21 @@ def _no_llm_response(
 # 7. Conversation Persistence
 # ---------------------------------------------------------------------------
 
-def _load_history_from_db(
-    db: Session, conversation_id: int, user_id: int
-) -> Tuple[List[Dict], Optional[int]]:
+def _load_history_from_db(db, conversation_id: int, user_id: int) -> Tuple[List[Dict], Optional[int]]:
     """
-    Load conversation history from DB. Returns (history_list, conversation_id).
+    Load conversation history from MongoDB conversations collection.
+    Returns (history_list, conversation_id).
     Returns ([], None) if the conversation is not found or doesn't belong to the user.
     """
-    conv = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.user_id == user_id)
-        .first()
-    )
+    conv = db.conversations.find_one({"_id": conversation_id, "user_id": user_id})
     if not conv:
         return [], None
-    history = [{"role": m.role, "content": m.content} for m in conv.messages]
-    return history, conv.id
+    history = [{"role": m["role"], "content": m["content"]} for m in conv.get("messages", [])]
+    return history, conv["_id"]
 
 
 def _persist_turn(
-    db: Session,
+    db,
     user_id: int,
     conversation_id: Optional[int],
     user_message: str,
@@ -738,47 +778,46 @@ def _persist_turn(
     recs: List[RestaurantRecommendation],
 ) -> int:
     """
-    Save user message + assistant response to DB.
-    Creates a new Conversation row on the first turn.
+    Save user + assistant messages to MongoDB conversations collection.
+    Messages are stored as an embedded array in the conversation document.
+    Creates a new conversation document on the first turn.
     Returns the conversation_id.
     """
-    if conversation_id:
-        conv = (
-            db.query(Conversation)
-            .filter(Conversation.id == conversation_id, Conversation.user_id == user_id)
-            .first()
-        )
-    else:
-        conv = None
+    now = datetime.utcnow()
 
-    if not conv:
-        conv = Conversation(user_id=user_id)
-        db.add(conv)
-        db.flush()  # assigns conv.id without committing
-
-    # User message
-    db.add(ConversationMessage(
-        conversation_id=conv.id,
-        role="user",
-        content=user_message,
-    ))
-
-    # Assistant message — attach filters/recs as JSON metadata
     extra = {
         "reasoning": response.get("reasoning"),
         "follow_up_question": response.get("follow_up_question"),
         "extracted_filters": filters.model_dump(),
         "recommendation_ids": [r.id for r in recs],
     }
-    db.add(ConversationMessage(
-        conversation_id=conv.id,
-        role="assistant",
-        content=response["assistant_message"],
-        extra_json=json.dumps(extra),
-    ))
+    new_messages = [
+        {"role": "user", "content": user_message, "created_at": now},
+        {"role": "assistant", "content": response["assistant_message"],
+         "metadata": extra, "created_at": now},
+    ]
 
-    db.commit()
-    return conv.id
+    if conversation_id:
+        conv = db.conversations.find_one({"_id": conversation_id, "user_id": user_id})
+    else:
+        conv = None
+
+    if conv:
+        db.conversations.update_one(
+            {"_id": conversation_id},
+            {"$push": {"messages": {"$each": new_messages}}, "$set": {"updated_at": now}},
+        )
+        return conversation_id
+    else:
+        new_id = _next_id(db, "conversations")
+        db.conversations.insert_one({
+            "_id": new_id,
+            "user_id": user_id,
+            "messages": new_messages,
+            "created_at": now,
+            "updated_at": now,
+        })
+        return new_id
 
 
 # ---------------------------------------------------------------------------
@@ -788,8 +827,8 @@ def _persist_turn(
 async def chat(
     message: str,
     conversation_history: List[Dict],
-    db: Session,
-    current_user: User,
+    db,
+    current_user,
     conversation_id: Optional[int] = None,
 ) -> ChatResponse:
     """

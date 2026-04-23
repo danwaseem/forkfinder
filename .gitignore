@@ -46,3 +46,16 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Docker
+.env.docker
+
+# Kubernetes secrets (never commit real secrets)
+kubernetes/02-secrets.yaml
+
+# JMeter — raw results and generated HTML reports (large binary/CSV output)
+# Keep the .gitkeep placeholder so the results/ directory is tracked
+jmeter/results/*.jtl
+jmeter/results/*.csv
+jmeter/results/html_*/
+jmeter/results/*.png

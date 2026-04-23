@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useDispatch } from 'react-redux'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import ReviewCard from '../components/restaurants/ReviewCard'
 import StarRating, { StarDisplay } from '../components/common/StarRating'
 import toast from 'react-hot-toast'
+import {
+  setReviews  as setReviewsStore,
+  addReview   as addReviewAction,
+  updateReview,
+  removeReview,
+} from '../store/slices/reviewsSlice'
+import { addFavorite, removeFavorite } from '../store/slices/favoritesSlice'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
@@ -48,6 +56,7 @@ export default function RestaurantDetails() {
   const { id }       = useParams()
   const { user }     = useAuth()
   const navigate     = useNavigate()
+  const dispatch     = useDispatch()
 
   const [restaurant, setRestaurant] = useState(null)
   const [reviews,    setReviews]    = useState([])
@@ -75,8 +84,10 @@ export default function RestaurantDetails() {
         // displayed count always matches the actual rendered cards, regardless
         // of whether the stored denormalized field is stale.
         setRestaurant({ ...rRes.data, review_count: revRes.data.total ?? rRes.data.review_count })
-        setReviews(revRes.data.items || [])
+        const revItems = revRes.data.items || []
+        setReviews(revItems)
         setFavorited(rRes.data.is_favorited || false)
+        dispatch(setReviewsStore({ restaurantId: parseInt(id), items: revItems, total: revRes.data.total || 0 }))
       })
       .catch(() => setError('Restaurant not found.'))
       .finally(() => setLoading(false))
@@ -88,10 +99,15 @@ export default function RestaurantDetails() {
       if (favorited) {
         await api.delete(`/favorites/${id}`)
         setFavorited(false)
+        dispatch(removeFavorite(parseInt(id)))
         toast.success('Removed from favorites')
       } else {
         await api.post(`/favorites/${id}`)
         setFavorited(true)
+        dispatch(addFavorite({
+          restaurant: { ...restaurant, id: parseInt(id) },
+          favorited_at: new Date().toISOString(),
+        }))
         toast.success('Saved to favorites')
       }
     } catch (err) {
@@ -115,8 +131,10 @@ export default function RestaurantDetails() {
         api.get(`/restaurants/${id}/reviews`),
         api.get(`/restaurants/${id}`),
       ])
-      setReviews(data.items || [])
+      const refreshedItems = data.items || []
+      setReviews(refreshedItems)
       setRestaurant(rData)
+      dispatch(setReviewsStore({ restaurantId: parseInt(id), items: refreshedItems, total: data.total || 0 }))
       setComment(''); setRating(5); setReviewPhoto(null); setShowForm(false)
       toast.success('Review posted!')
     } catch (err) {
@@ -424,10 +442,12 @@ export default function RestaurantDetails() {
                       review={rev}
                       onUpdated={(updated, stats) => {
                         setReviews((prev) => prev.map((r) => r.id === updated.id ? updated : r))
+                        dispatch(updateReview(updated))
                         if (stats) setRestaurant((prev) => ({ ...prev, avg_rating: stats.avg_rating, review_count: stats.review_count }))
                       }}
                       onDeleted={(revId, stats) => {
                         setReviews((prev) => prev.filter((r) => r.id !== revId))
+                        dispatch(removeReview(revId))
                         if (stats) setRestaurant((prev) => ({ ...prev, avg_rating: stats.avg_rating, review_count: stats.review_count }))
                       }}
                     />
