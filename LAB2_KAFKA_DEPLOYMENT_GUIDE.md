@@ -159,7 +159,7 @@ docker compose --env-file .env.docker exec mongodb \
 
 ```bash
 docker exec forkfinder-kafka \
-  kafka-topics.sh --bootstrap-server localhost:9092 --list
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
 ```
 
 Expected topics:
@@ -177,7 +177,7 @@ review.updated
 ```bash
 # Read all review.created messages
 docker exec forkfinder-kafka \
-  kafka-console-consumer.sh \
+  /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic review.created \
   --from-beginning \
@@ -190,7 +190,7 @@ docker exec forkfinder-kafka \
 
 ```bash
 docker exec forkfinder-kafka \
-  kafka-consumer-groups.sh \
+  /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --describe \
   --group review-worker-group
@@ -284,7 +284,7 @@ KAFKA_POD=$(kubectl get pod -n forkfinder -l app=kafka \
   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n forkfinder ${KAFKA_POD} -- \
-  kafka-topics.sh --bootstrap-server localhost:9092 --list
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
 
 # Stream worker logs
 kubectl logs -n forkfinder -l app=review-worker --follow
@@ -305,7 +305,7 @@ kubectl logs -n forkfinder -l app=review-worker --follow
 | Workers stuck in `CrashLoopBackOff` | Kafka not ready when worker starts | Workers retry on `NoBrokersAvailable` — check if Kafka pod is Running first |
 | Producer logs show "Kafka not available" | `KAFKA_BOOTSTRAP_SERVERS` not set or wrong | Verify env var in docker-compose or K8s deployment |
 | `review_events` collection is empty | Worker not running or not consuming | `docker logs forkfinder-review-worker` — check for errors |
-| Kafka topic not found | Topics auto-created on first publish | Wait a few seconds; or create manually: `kafka-topics.sh --create --topic review.created --bootstrap-server localhost:9092` |
+| Kafka topic not found | Topics auto-created on first publish | Wait a few seconds; or create manually: `/opt/kafka/bin/kafka-topics.sh --create --topic review.created --bootstrap-server localhost:9092` |
 | Consumer group lag never reaches 0 | Worker crashed after receiving messages | Check `docker logs forkfinder-review-worker` for DB errors |
 | `NoBrokersAvailable` on first API request | Kafka still starting | Increase `start_period` in Kafka healthcheck or add retry logic |
 
