@@ -1,191 +1,313 @@
 #!/usr/bin/env python3
 """
-ForkFinder demo seed data script for MongoDB.
-
-Usage (run from the backend/ directory):
-  python seed_data.py          # insert seed data (safe – skips if data exists)
-  python seed_data.py --wipe   # drop all seed data first, then re-seed
-  python seed_data.py --sql    # print note only (no DB writes)
-  python seed_data.py --recalc # recompute restaurant aggregates from reviews
-
-Prerequisites:
-  pip install -r requirements.txt
-  # Ensure backend/.env has valid MongoDB settings:
-  #   MONGODB_URL=...
-  #   MONGODB_DB_NAME=...
+ForkFinder demo seed data — MongoDB version.
+Usage (run from inside the backend container):
+  python seed_data.py          # insert seed data (skips if data exists)
+  python seed_data.py --wipe   # drop all data first, then re-seed
 """
-
 import argparse
-import json
 import sys
 from datetime import datetime, timedelta
 from typing import Any
 
-sys.path.insert(0, ".")  # allow imports from app/
-
+sys.path.insert(0, ".")
 from app.database import get_db, _next_id
 from app.utils.auth import hash_password
-
-
-# ---------------------------------------------------------------------------
-# Timestamps  (spread over the past 6 months for realistic history)
-# ---------------------------------------------------------------------------
-
-def _ago(**kwargs) -> datetime:
-    return datetime.utcnow() - timedelta(**kwargs)
-
-
-# ---------------------------------------------------------------------------
-# Raw data definitions
-# ---------------------------------------------------------------------------
-# Keep your existing USERS / PREFERENCES / RESTAURANTS / REVIEWS / FAVORITES /
-# CONVERSATIONS constants exactly as they are in your current file.
-# ---------------------------------------------------------------------------
-
-USERS = [...]  # keep existing value
-PREFERENCES = {
-    "user@demo.com": dict(
-        cuisine_preferences=json.dumps(["Italian", "Japanese", "French"]),
-        price_range="$$",
-        search_radius=15,
-        preferred_locations=json.dumps(["San Francisco", "Oakland"]),
-        dietary_restrictions=json.dumps([]),
-        ambiance_preferences=json.dumps(["Romantic", "Casual", "Fine Dining"]),
-        sort_preference="rating",
-    ),
-    "marcus@demo.com": dict(
-        cuisine_preferences=json.dumps(["American", "BBQ", "Mexican"]),
-        price_range="$",
-        search_radius=20,
-        preferred_locations=json.dumps(["Oakland", "San Francisco"]),
-        dietary_restrictions=json.dumps([]),
-        ambiance_preferences=json.dumps(["Sports Bar", "Casual", "Quick Bite"]),
-        sort_preference="most_reviewed",
-    ),
-    "priya@demo.com": dict(
-        cuisine_preferences=json.dumps(["Indian", "Mediterranean", "Vegan", "Thai"]),
-        price_range="$$",
-        search_radius=10,
-        preferred_locations=json.dumps(["San Francisco"]),
-        dietary_restrictions=json.dumps(["Vegetarian"]),
-        ambiance_preferences=json.dumps(["Casual", "Outdoor Seating", "Family-Friendly"]),
-        sort_preference="rating",
-    ),
-    "alex@demo.com": dict(
-        cuisine_preferences=json.dumps(["French", "Japanese", "Korean", "Seafood"]),
-        price_range="$$$",
-        search_radius=25,
-        preferred_locations=json.dumps(["San Francisco"]),
-        dietary_restrictions=json.dumps([]),
-        ambiance_preferences=json.dumps(["Fine Dining", "Romantic", "Rooftop"]),
-        sort_preference="rating",
-    ),
-    "emily@demo.com": dict(
-        cuisine_preferences=json.dumps(["Chinese", "Japanese", "Vietnamese", "Korean"]),
-        price_range="$$",
-        search_radius=12,
-        preferred_locations=json.dumps(["San Francisco", "Oakland"]),
-        dietary_restrictions=json.dumps([]),
-        ambiance_preferences=json.dumps(["Casual", "Outdoor Seating", "Brunch Spot"]),
-        sort_preference="newest",
-    ),
-}
-RESTAURANTS = [...]  # keep existing value
-REVIEWS = [...]  # keep existing value
-FAVORITES = [...]  # keep existing value
-CONVERSATIONS = [...]  # keep existing value
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _ago(**kwargs) -> datetime:
+    return datetime.utcnow() - timedelta(**kwargs)
 
-def _maybe_json_load(value: Any) -> Any:
-    """Convert JSON-encoded strings used by legacy seed data into native Python types."""
-    if not isinstance(value, str):
-        return value
-    stripped = value.strip()
-    if not stripped:
-        return value
-    if stripped[0] not in "[{":
-        return value
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError:
-        return value
+def _seed_metadata():
+    return {"is_seeded": True}
 
-
-def _normalize_prefs(prefs: dict[str, Any]) -> dict[str, Any]:
-    return {k: _maybe_json_load(v) for k, v in prefs.items()}
-
-
-def _normalize_restaurant_data(rdata: dict[str, Any]) -> dict[str, Any]:
-    doc = dict(rdata)
-    if "hours" in doc:
-        doc["hours"] = _maybe_json_load(doc["hours"])
-    if "photos" in doc:
-        doc["photos"] = _maybe_json_load(doc["photos"])
-    return doc
-
-
-def _seed_metadata() -> dict[str, Any]:
+def _normalize_prefs(p: dict) -> dict:
     return {
-        "seed_source": "seed_data.py",
-        "seeded_at": datetime.utcnow(),
+        "cuisines":        p.get("cuisines", []),
+        "price_range":     p.get("price_range", "$$"),
+        "dietary":         p.get("dietary", []),
+        "ambiance":        p.get("ambiance", []),
+        "sort_by":         p.get("sort_by", "rating"),
+        "location":        p.get("location", ""),
+        "search_radius":   p.get("search_radius", 10),
     }
 
+# ---------------------------------------------------------------------------
+# Raw data
+# ---------------------------------------------------------------------------
+USERS = [
+    {"name": "Alice Johnson",  "email": "alice@example.com",   "role": "user"},
+    {"name": "Bob Smith",      "email": "bob@example.com",     "role": "user"},
+    {"name": "Carol White",    "email": "carol@example.com",   "role": "user"},
+    {"name": "David Lee",      "email": "david@example.com",   "role": "user"},
+    {"name": "Eva Martinez",   "email": "eva@example.com",     "role": "user"},
+    {"name": "Demo User",      "email": "user@demo.com",       "role": "user"},
+    {"name": "Demo Owner",     "email": "owner@demo.com",      "role": "owner"},
+]
+
+PREFERENCES = {
+    "alice@example.com": {
+        "cuisines": ["Italian", "Japanese"],
+        "price_range": "$$",
+        "dietary": ["vegetarian"],
+        "ambiance": ["casual", "romantic"],
+        "sort_by": "rating",
+        "location": "San Jose, CA",
+        "search_radius": 10,
+    },
+    "bob@example.com": {
+        "cuisines": ["American", "Mexican"],
+        "price_range": "$",
+        "dietary": [],
+        "ambiance": ["casual", "family-friendly"],
+        "sort_by": "distance",
+        "location": "San Jose, CA",
+        "search_radius": 5,
+    },
+    "carol@example.com": {
+        "cuisines": ["Chinese", "Thai", "Indian"],
+        "price_range": "$$",
+        "dietary": ["vegan", "gluten-free"],
+        "ambiance": ["casual"],
+        "sort_by": "rating",
+        "location": "San Jose, CA",
+        "search_radius": 15,
+    },
+    "david@example.com": {
+        "cuisines": ["French", "Italian"],
+        "price_range": "$$$",
+        "dietary": [],
+        "ambiance": ["fine dining", "romantic"],
+        "sort_by": "popularity",
+        "location": "San Jose, CA",
+        "search_radius": 20,
+    },
+    "eva@example.com": {
+        "cuisines": ["Mexican", "American"],
+        "price_range": "$",
+        "dietary": ["halal"],
+        "ambiance": ["casual", "family-friendly"],
+        "sort_by": "price",
+        "location": "San Jose, CA",
+        "search_radius": 8,
+    },
+    "user@demo.com": {
+        "cuisines": ["Italian", "American", "Japanese"],
+        "price_range": "$$",
+        "dietary": [],
+        "ambiance": ["casual"],
+        "sort_by": "rating",
+        "location": "San Jose, CA",
+        "search_radius": 10,
+    },
+}
+
+RESTAURANTS = [
+    {
+        "name": "Pasta Paradise",
+        "cuisine_type": "Italian",
+        "address": "123 Main St",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95101",
+        "description": "Authentic Italian pasta dishes made fresh daily.",
+        "price_range": "$$",
+        "phone": "408-555-0101",
+        "hours": {"everyday": "11am-10pm"},
+        "amenities": ["wifi", "outdoor seating"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "Sakura Sushi",
+        "cuisine_type": "Japanese",
+        "address": "456 Oak Ave",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95112",
+        "description": "Fresh sushi and traditional Japanese cuisine.",
+        "price_range": "$$$",
+        "phone": "408-555-0102",
+        "hours": {"everyday": "12pm-11pm"},
+        "amenities": ["reservations", "sake bar"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "Taco Fiesta",
+        "cuisine_type": "Mexican",
+        "address": "789 Elm St",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95110",
+        "description": "Vibrant Mexican street food and margaritas.",
+        "price_range": "$",
+        "phone": "408-555-0103",
+        "hours": {"everyday": "10am-9pm"},
+        "amenities": ["family-friendly", "takeout"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "The Burger Joint",
+        "cuisine_type": "American",
+        "address": "321 Maple Rd",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95128",
+        "description": "Classic American burgers with gourmet toppings.",
+        "price_range": "$$",
+        "phone": "408-555-0104",
+        "hours": {"everyday": "11am-11pm"},
+        "amenities": ["wifi", "late night", "takeout"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "Golden Dragon",
+        "cuisine_type": "Chinese",
+        "address": "654 Pine St",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95112",
+        "description": "Dim sum and Cantonese specialties.",
+        "price_range": "$$",
+        "phone": "408-555-0105",
+        "hours": {"everyday": "9am-10pm"},
+        "amenities": ["family-friendly", "reservations"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "Le Petit Bistro",
+        "cuisine_type": "French",
+        "address": "987 Cedar Blvd",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95125",
+        "description": "Elegant French cuisine in a romantic setting.",
+        "price_range": "$$$",
+        "phone": "408-555-0106",
+        "hours": {"tuesday": "5pm-11pm", "wednesday": "5pm-11pm", "thursday": "5pm-11pm", "friday": "5pm-11pm", "saturday": "5pm-11pm", "sunday": "5pm-11pm"},
+        "amenities": ["reservations", "wine bar", "romantic"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "Spice Garden",
+        "cuisine_type": "Indian",
+        "address": "147 Walnut Ave",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95134",
+        "description": "Rich curries and tandoor specialties from Northern India.",
+        "price_range": "$$",
+        "phone": "408-555-0107",
+        "hours": {"everyday": "11:30am-10pm"},
+        "amenities": ["vegetarian options", "takeout", "delivery"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "Bangkok Garden",
+        "cuisine_type": "Thai",
+        "address": "258 Birch Lane",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95116",
+        "description": "Authentic Thai dishes with fresh herbs and spices.",
+        "price_range": "$",
+        "phone": "408-555-0108",
+        "hours": {"everyday": "11am-9:30pm"},
+        "amenities": ["vegan options", "takeout"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "Green Leaf Cafe",
+        "cuisine_type": "American",
+        "address": "369 Spruce St",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95126",
+        "description": "100% plant-based menu with seasonal ingredients.",
+        "price_range": "$",
+        "phone": "408-555-0109",
+        "hours": {"monday": "8am-8pm", "tuesday": "8am-8pm", "wednesday": "8am-8pm", "thursday": "8am-8pm", "friday": "8am-8pm", "saturday": "8am-8pm"},
+        "amenities": ["vegan", "gluten-free options", "wifi", "outdoor seating"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+    {
+        "name": "Sunset Steakhouse",
+        "cuisine_type": "American",
+        "address": "741 Redwood Dr",
+        "city": "San Jose",
+        "state": "CA",
+        "zip_code": "95120",
+        "description": "Prime cuts and classic steakhouse sides.",
+        "price_range": "$$$$",
+        "phone": "408-555-0110",
+        "hours": {"everyday": "5pm-11pm"},
+        "amenities": ["reservations", "fine dining", "bar", "private dining"],
+        "photos": [],
+        "is_claimed": False,
+        "claimed_by": None,
+    },
+]
+
+# Reviews: list of (user_email, restaurant_index, rating, comment)
+REVIEWS_DATA = [
+    ("alice@example.com",  0, 5, "The carbonara here is absolutely divine. Fresh pasta every time!"),
+    ("alice@example.com",  1, 4, "Very fresh fish. The omakase is worth it for a special occasion."),
+    ("bob@example.com",    2, 5, "Best tacos in San Jose! The al pastor is incredible."),
+    ("bob@example.com",    3, 4, "Solid burgers. The truffle fries are a must-try."),
+    ("carol@example.com",  4, 5, "Excellent dim sum on weekends. Always packed for a reason."),
+    ("carol@example.com",  6, 5, "Amazing vegetarian options. The paneer tikka masala is perfect."),
+    ("carol@example.com",  8, 4, "Great vegan options. The jackfruit tacos are surprisingly good."),
+    ("david@example.com",  5, 5, "Finest French food in the South Bay. The duck confit is flawless."),
+    ("david@example.com",  0, 4, "Very good pasta, though not quite Paris level. Lovely atmosphere."),
+    ("eva@example.com",    2, 4, "Great halal options. Family loved the enchiladas."),
+    ("eva@example.com",    7, 5, "Authentic Thai flavors. The pad see ew is the best I've had."),
+    ("user@demo.com",      0, 5, "My go-to Italian spot in San Jose. Never disappoints!"),
+    ("user@demo.com",      3, 3, "Burgers are okay but nothing special. Fries were cold."),
+    ("user@demo.com",      9, 5, "Incredible ribeye. Perfect for a special night out."),
+]
+
+FAVORITES_DATA = [
+    ("alice@example.com",  0),
+    ("alice@example.com",  1),
+    ("bob@example.com",    2),
+    ("bob@example.com",    3),
+    ("carol@example.com",  4),
+    ("carol@example.com",  6),
+    ("david@example.com",  5),
+    ("user@demo.com",      0),
+    ("user@demo.com",      9),
+]
 
 # ---------------------------------------------------------------------------
-# Destructive wipe
+# Wipe
 # ---------------------------------------------------------------------------
-
 def _wipe(db):
-    print("Wiping existing seed data...")
-
-    db.conversations.delete_many({})
-    db.favorites.delete_many({})
-    db.reviews.delete_many({})
-    db.restaurant_claims.delete_many({})
-    db.restaurants.delete_many({})
-    db.users.delete_many({})
-
-    db.counters.delete_many(
-        {
-            "_id": {
-                "$in": [
-                    "users",
-                    "restaurants",
-                    "restaurant_claims",
-                    "reviews",
-                    "favorites",
-                    "conversations",
-                ]
-            }
-        }
-    )
-
-    print("Done.")
-
+    for col in ["users", "restaurants", "reviews", "favorites", "sessions", "conversations", "counters"]:
+        db[col].drop()
+    print("  All collections dropped.")
 
 # ---------------------------------------------------------------------------
-# Aggregate recalculation
+# Seed
 # ---------------------------------------------------------------------------
-
-def _recalc_restaurant_rating(db, restaurant_id: int) -> tuple[int, float]:
-    reviews = list(db.reviews.find({"restaurant_id": restaurant_id}, {"rating": 1}))
-    count = len(reviews)
-    avg = round(sum(r["rating"] for r in reviews) / count, 2) if count else 0.0
-    db.restaurants.update_one(
-        {"_id": restaurant_id},
-        {"$set": {"review_count": count, "avg_rating": avg, "updated_at": datetime.utcnow()}},
-    )
-    return count, avg
-
-
-# ---------------------------------------------------------------------------
-# Seeding logic
-# ---------------------------------------------------------------------------
-
 def _seed(db, wipe: bool):
     if wipe:
         _wipe(db)
@@ -198,7 +320,7 @@ def _seed(db, wipe: bool):
 
     # --- Users ---
     print("Creating users...")
-    user_map: dict[str, dict[str, Any]] = {}
+    user_map: dict[str, dict] = {}
     for idx, u in enumerate(USERS):
         user_id = _next_id(db, "users")
         prefs_data = _normalize_prefs(PREFERENCES.get(u["email"], {}))
@@ -207,6 +329,13 @@ def _seed(db, wipe: bool):
             **u,
             "password_hash": pw,
             "preferences": prefs_data,
+            "profile_picture": None,
+            "phone": None,
+            "about": None,
+            "country": "US",
+            "city": "San Jose",
+            "languages": ["English"],
+            "gender": None,
             "created_at": _ago(days=180 - idx * 10),
             "updated_at": _ago(days=180 - idx * 10),
             **_seed_metadata(),
@@ -217,183 +346,100 @@ def _seed(db, wipe: bool):
 
     # --- Restaurants ---
     print("Creating restaurants...")
-    rest_map: dict[str, dict[str, Any]] = {}
-    for idx, (creator_email, claimer_email, rdata) in enumerate(RESTAURANTS):
-        rest_id = _next_id(db, "restaurants")
-        normalized = _normalize_restaurant_data(rdata)
-        created_at = _ago(days=max(1, 150 - idx * 2))
-        restaurant_doc = {
-            "_id": rest_id,
-            **normalized,
-            "created_by": user_map[creator_email]["_id"],
-            "claimed_by": user_map[claimer_email]["_id"] if claimer_email else None,
-            "created_at": created_at,
-            "updated_at": created_at,
+    restaurant_map: list[dict] = []
+    for idx, r in enumerate(RESTAURANTS):
+        rid = _next_id(db, "restaurants")
+        rest_doc = {
+            "_id": rid,
+            **r,
+            "avg_rating": 0.0,
+            "created_by": 6,
+            "country": "United States",
+            "website": None,
+            "latitude": None,
+            "longitude": None,
+            "review_count": 0,
+            "total_views": 0,
+            "created_at": _ago(days=365 - idx * 20),
+            "updated_at": _ago(days=365 - idx * 20),
             **_seed_metadata(),
         }
-        db.restaurants.insert_one(restaurant_doc)
-        rest_map[rdata["name"]] = restaurant_doc
-    print(f"  {len(rest_map)} restaurants created.")
-
-    # --- Restaurant claims ---
-    print("Creating ownership claims...")
-    claim_count = 0
-    for _, claimer_email, rdata in RESTAURANTS:
-        if not claimer_email:
-            continue
-        db.restaurant_claims.insert_one(
-            {
-                "_id": _next_id(db, "restaurant_claims"),
-                "restaurant_id": rest_map[rdata["name"]]["_id"],
-                "owner_id": user_map[claimer_email]["_id"],
-                "status": "approved",
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                **_seed_metadata(),
-            }
-        )
-        claim_count += 1
-    print(f"  {claim_count} claims created.")
+        db.restaurants.insert_one(rest_doc)
+        restaurant_map.append(rest_doc)
+    print(f"  {len(restaurant_map)} restaurants created.")
 
     # --- Reviews ---
     print("Creating reviews...")
-    for reviewer_email, rest_name, rating, comment, days in REVIEWS:
-        created_at = _ago(days=days)
-        db.reviews.insert_one(
-            {
-                "_id": _next_id(db, "reviews"),
-                "user_id": user_map[reviewer_email]["_id"],
-                "restaurant_id": rest_map[rest_name]["_id"],
-                "rating": rating,
-                "comment": comment,
-                "photos": [],
-                "created_at": created_at,
-                "updated_at": created_at,
-                **_seed_metadata(),
-            }
-        )
-    print(f"  {len(REVIEWS)} reviews created.")
+    review_count = 0
+    # Track rating totals per restaurant for aggregate update
+    rating_totals: dict[int, list] = {r["_id"]: [] for r in restaurant_map}
 
-    # --- Sync restaurant aggregates from actual reviews ---
-    print("Recalculating restaurant ratings from actual reviews...")
-    for r in rest_map.values():
-        _recalc_restaurant_rating(db, r["_id"])
-    print(f"  Ratings synced for {len(rest_map)} restaurants.")
+    for user_email, rest_idx, rating, comment in REVIEWS_DATA:
+        user = user_map.get(user_email)
+        restaurant = restaurant_map[rest_idx]
+        if not user:
+            continue
+        rev_id = _next_id(db, "reviews")
+        review_doc = {
+            "_id": rev_id,
+            "user_id": user["_id"],
+            "restaurant_id": restaurant["_id"],
+            "rating": rating,
+            "comment": comment,
+            "photos": [],
+            "created_at": _ago(days=90 - review_count * 3),
+            "updated_at": _ago(days=90 - review_count * 3),
+            **_seed_metadata(),
+        }
+        db.reviews.insert_one(review_doc)
+        rating_totals[restaurant["_id"]].append(rating)
+        review_count += 1
+    print(f"  {review_count} reviews created.")
+
+    # Update restaurant aggregates
+    for rid, ratings in rating_totals.items():
+        if ratings:
+            avg = round(sum(ratings) / len(ratings), 2)
+            db.restaurants.update_one(
+                {"_id": rid},
+                {"$set": {"avg_rating": avg, "review_count": len(ratings)}}
+            )
 
     # --- Favorites ---
     print("Creating favorites...")
-    for idx, (user_email, rest_name) in enumerate(FAVORITES):
-        db.favorites.insert_one(
-            {
-                "_id": _next_id(db, "favorites"),
-                "user_id": user_map[user_email]["_id"],
-                "restaurant_id": rest_map[rest_name]["_id"],
-                "created_at": _ago(days=max(1, 60 - idx * 2)),
-                "updated_at": datetime.utcnow(),
-                **_seed_metadata(),
-            }
-        )
-    print(f"  {len(FAVORITES)} favorites created.")
+    fav_count = 0
+    for user_email, rest_idx in FAVORITES_DATA:
+        user = user_map.get(user_email)
+        restaurant = restaurant_map[rest_idx]
+        if not user:
+            continue
+        fav_id = _next_id(db, "favorites")
+        db.favorites.insert_one({
+            "_id": fav_id,
+            "user_id": user["_id"],
+            "restaurant_id": restaurant["_id"],
+            "created_at": _ago(days=30),
+            **_seed_metadata(),
+        })
+        fav_count += 1
+    print(f"  {fav_count} favorites created.")
 
-    # --- Demo AI conversations ---
-    print("Creating AI conversation history...")
-    for idx, (user_email, messages) in enumerate(CONVERSATIONS):
-        conv_created_at = _ago(days=5 + idx)
-        message_docs = []
-        for msg_idx, (role, content) in enumerate(messages):
-            message_docs.append(
-                {
-                    "role": role,
-                    "content": content,
-                    "created_at": conv_created_at + timedelta(minutes=msg_idx),
-                }
-            )
-        db.conversations.insert_one(
-            {
-                "_id": _next_id(db, "conversations"),
-                "user_id": user_map[user_email]["_id"],
-                "messages": message_docs,
-                "created_at": conv_created_at,
-                "updated_at": datetime.utcnow(),
-                **_seed_metadata(),
-            }
-        )
-    print(f"  {len(CONVERSATIONS)} conversations created.")
-
-    print("\n✓ Seed complete!")
-    print("  Demo accounts (all passwords: 'password')")
-    print("  ├─ Reviewer:  user@demo.com")
-    print("  ├─ Reviewer:  marcus@demo.com / priya@demo.com / alex@demo.com / emily@demo.com")
-    print("  └─ Owners:    owner@demo.com / wei@demo.com / sofia@demo.com")
-
+    print("\n✅ Seed complete!")
+    print("   Demo credentials (all passwords: 'password'):")
+    print("   User:  user@demo.com")
+    print("   Owner: owner@demo.com")
+    print("   Also:  alice@example.com, bob@example.com, carol@example.com")
 
 # ---------------------------------------------------------------------------
-# Optional: note only
+# Main
 # ---------------------------------------------------------------------------
-
-def _print_sql_note():
-    print(
-        """
--- ============================================================
--- ForkFinder seed data — MongoDB version
--- ============================================================
--- This project now seeds MongoDB collections directly.
--- Run this script directly instead:
---   python seed_data.py
--- Or recalculate aggregates with:
---   python seed_data.py --recalc
--- ============================================================
-"""
-    )
-
-
-# ---------------------------------------------------------------------------
-# Non-destructive aggregate recalculation
-# ---------------------------------------------------------------------------
-
-def _recalc_all(db):
-    print("Recalculating all restaurant ratings from reviews collection...")
-    restaurants = list(db.restaurants.find({}, {"_id": 1, "review_count": 1, "avg_rating": 1}))
-    updated = 0
-    for r in restaurants:
-        reviews = list(db.reviews.find({"restaurant_id": r["_id"]}, {"rating": 1}))
-        count = len(reviews)
-        avg = round(sum(rv["rating"] for rv in reviews) / count, 2) if count else 0.0
-        if r.get("review_count") != count or round(float(r.get("avg_rating", 0.0)), 2) != avg:
-            db.restaurants.update_one(
-                {"_id": r["_id"]},
-                {"$set": {"review_count": count, "avg_rating": avg, "updated_at": datetime.utcnow()}},
-            )
-            updated += 1
-    print(f"  {updated} / {len(restaurants)} restaurants updated.")
-    print("Done.")
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main():
-    parser = argparse.ArgumentParser(description="ForkFinder demo seed script")
-    parser.add_argument("--wipe", action="store_true", help="Wipe all data before seeding")
-    parser.add_argument("--sql", action="store_true", help="Print note instead of seeding")
-    parser.add_argument("--recalc", action="store_true", help="Recalculate all restaurant ratings without wiping data")
+    parser = argparse.ArgumentParser(description="Seed ForkFinder MongoDB database.")
+    parser.add_argument("--wipe", action="store_true", help="Drop all data before seeding")
     args = parser.parse_args()
 
-    if args.sql:
-        _print_sql_note()
-        return
-
     db = get_db()
-    try:
-        if args.recalc:
-            _recalc_all(db)
-            return
-        _seed(db, args.wipe)
-    except Exception as exc:
-        print(f"\nERROR: {exc}", file=sys.stderr)
-        raise
-
+    _seed(db, args.wipe)
 
 if __name__ == "__main__":
     main()
