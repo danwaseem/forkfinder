@@ -40,7 +40,7 @@ services:
 
   # ── Zookeeper (required by Kafka) ────────────────────────────────────────────
   zookeeper:
-    image: bitnami/zookeeper:3.8
+    image: bitnamilegacy/zookeeper:3.9.3-debian-12-r22
     container_name: forkfinder-zookeeper
     environment:
       - ALLOW_ANONYMOUS_LOGIN=yes
@@ -54,7 +54,7 @@ services:
   #   PLAINTEXT  (kafka:9092)      — used by containers inside Docker network
   #   EXTERNAL   (localhost:9093)  — used when connecting from the host machine
   kafka:
-    image: bitnami/kafka:3.3
+    image: bitnamilegacy/kafka:3.3.2
     container_name: forkfinder-kafka
     ports:
       - "9092:9092"    # internal listener (containers)
