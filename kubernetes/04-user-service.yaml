@@ -4,7 +4,7 @@
 #                 favorites, activity history.
 # Routes served : /auth/user/*, /users/*, /preferences/*, /favorites/*, /history/*
 #
-# IMAGE: Replace <YOUR_ECR_REGISTRY> with your ECR URI before applying.
+# IMAGE: Replace 884058772460.dkr.ecr.us-east-1.amazonaws.com with your ECR URI before applying.
 #        Example: 123456789.dkr.ecr.us-east-1.amazonaws.com/forkfinder/user-service:latest
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: <YOUR_ECR_REGISTRY>/forkfinder/user-service:latest
+          image: 884058772460.dkr.ecr.us-east-1.amazonaws.com/forkfinder/user-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

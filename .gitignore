@@ -14,6 +14,7 @@ venv/
 env/
 *.db
 *.sqlite3
+DEMO_CHEATSHEET.md
 
 # Test artifacts
 backend/test_forkfinder.db

@@ -53,8 +53,9 @@ spec:
               command:
                 - mongosh
                 - --eval
-                - "db.adminCommand('ping')"
-            initialDelaySeconds: 20
+                - db.adminCommand('ping')
+            initialDelaySeconds: 40
+            timeoutSeconds: 5
             periodSeconds: 10
             failureThreshold: 6
           resources:

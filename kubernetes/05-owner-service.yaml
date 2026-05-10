@@ -3,7 +3,7 @@
 # Logical scope : owner dashboard, profile, analytics, ownership claims.
 # Routes served : /auth/owner/*, /owner/*
 #
-# IMAGE: Replace <YOUR_ECR_REGISTRY> before applying.
+# IMAGE: Replace 884058772460.dkr.ecr.us-east-1.amazonaws.com before applying.
 # ──────────────────────────────────────────────────────────────────────────────
 
 apiVersion: apps/v1
@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: owner-service
-          image: <YOUR_ECR_REGISTRY>/forkfinder/owner-service:latest
+          image: 884058772460.dkr.ecr.us-east-1.amazonaws.com/forkfinder/owner-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

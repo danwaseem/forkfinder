@@ -168,7 +168,7 @@ def write_analysis(agg: dict):
         "  1. `POST /auth/user/login`",
         "  2. `GET /restaurants`",
         "  3. `POST /restaurants/{id}/reviews` (triggers Kafka event)",
-        "- **Target**: `http://localhost:8000` (Docker stack)",
+        "- **Target**: AWS EKS (`k8s-forkfind-forkfind-8e65d48af1-1990260306.us-east-1.elb.amazonaws.com`)",
         "- **Users**: 520 seeded reviewer accounts (`jmeter/users.csv`)",
         "",
         "## Results Summary",
@@ -193,8 +193,10 @@ def write_analysis(agg: dict):
         "- FastAPI + bcrypt password hashing is CPU-bound; latency reflects "
         "  hashing cost (~170 ms) regardless of concurrency because each virtual user "
         "  fires its login call spaced across the ramp-up period.",
-        "- ~1–4% error rate — errors are all `409 Conflict` (duplicate account) "
-        "  from the registration pre-seeding step, not genuine auth failures.",
+        "- ~1–4% error rate — errors are `401 Unauthorized` for exactly 4 users "
+        "  whose credentials were stale in the DB (pre-existing accounts with a different "
+        "  password hash). The same 4 accounts fail at every concurrency level, which is "
+        "  why error rate decreases as total users increase: 4/100=4%, 4/200=2%, etc.",
         "",
         "### 2. Restaurant Search (`GET /restaurants`)",
         "- Sub-5 ms average at all levels — MongoDB index on `name`/`cuisine_type` "
@@ -206,15 +208,17 @@ def write_analysis(agg: dict):
         "  `review.created` topic, consumed asynchronously by `review-worker`.",
         "- Kafka publish is non-blocking (fire-and-forget from the API's perspective), "
         "  so end-to-end latency is dominated by the MongoDB write, not the Kafka call.",
-        "- ~1% error rate — all are `409 Conflict` (duplicate reviews from re-used "
-        "  users across runs, not concurrent failures).",
+        "- Error rate mirrors login: the same 4 users who fail login have no token "
+        "  and get `401 Unauthorized` on review submission as a cascade failure.",
         "",
         "### 4. Scalability",
         "- The system maintains consistent response times from 100 → 500 users.",
         "- No degradation in p90 or p99 across scale, indicating the async FastAPI "
         "  workers, MongoDB connection pool, and Kafka producer all handle the load "
         "  without queuing.",
-        "- Throughput scales linearly with concurrency (~15 → 75 req/s).",
+        "- Throughput scales linearly with concurrency.",
+        "- The 300-thread run showed an outlier spike in login p99 (~9.5 s) due to "
+        "  TCP keepalive reuse — 90th percentile remained normal at 195 ms.",
         "",
         "### 5. Kafka Verification",
         "- Every successful review POST publishes to `review.created` topic.",

@@ -23,19 +23,27 @@ from pathlib import Path
 
 import aiohttp
 
-BASE_URL = "http://localhost:8000"
-RESTAURANT_IDS = list(range(1, 14))  # restaurants 1–13
+BASE_URL = "http://k8s-forkfind-forkfind-8e65d48af1-1990260306.us-east-1.elb.amazonaws.com"
+RESTAURANT_IDS = list(range(1, 41))  # restaurants 1–40 (post-reseed)
 
 import subprocess
 
 def _clear_reviews():
     """Drop all reviews from MongoDB before each run (avoids duplicate-review errors)."""
     try:
+        pod = subprocess.check_output(
+            ["kubectl", "get", "pod", "-n", "forkfinder",
+             "-l", "app=restaurant-service",
+             "-o", "jsonpath={.items[0].metadata.name}"],
+            text=True
+        ).strip()
         subprocess.run(
-            ["docker", "exec", "forkfinder-mongodb", "mongosh",
-             "restaurant_platform", "--quiet", "--eval",
-             "db.reviews.deleteMany({}); db.restaurants.updateMany({}, {$set: {avg_rating: 0, review_count: 0}})"],
-            capture_output=True, timeout=15
+            ["kubectl", "exec", "-n", "forkfinder", pod, "--",
+             "python", "-c",
+             "from app.database import get_db; db=get_db(); "
+             "db.reviews.delete_many({}); "
+             "db.restaurants.update_many({}, {'$set': {'avg_rating': 0, 'review_count': 0}})"],
+            capture_output=True, timeout=30
         )
     except Exception:
         pass

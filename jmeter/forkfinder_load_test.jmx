@@ -34,18 +34,18 @@ Usage: jmeter -n -t forkfinder_load_test.jmx -l results/results.jtl -Jthreads=10
           <!-- Override via -JBASE_HOST=... on the CLI -->
           <elementProp name="BASE_HOST" elementType="Argument">
             <stringProp name="Argument.name">BASE_HOST</stringProp>
-            <stringProp name="Argument.value">localhost</stringProp>
+            <stringProp name="Argument.value">${__P(BASE_HOST,localhost)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="BASE_PORT" elementType="Argument">
             <stringProp name="Argument.name">BASE_PORT</stringProp>
-            <stringProp name="Argument.value">8000</stringProp>
+            <stringProp name="Argument.value">${__P(BASE_PORT,8000)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <!-- Set to an existing restaurant _id in your MongoDB -->
           <elementProp name="RESTAURANT_ID" elementType="Argument">
             <stringProp name="Argument.name">RESTAURANT_ID</stringProp>
-            <stringProp name="Argument.value">1</stringProp>
+            <stringProp name="Argument.value">${__P(RESTAURANT_ID,1)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
         </collectionProp>
@@ -165,19 +165,18 @@ Usage: jmeter -n -t forkfinder_load_test.jmx -l results/results.jtl -Jthreads=10
           <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
           <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
           <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
-          <stringProp name="HTTPSampler.connect_timeout">5000</stringProp>
-          <stringProp name="HTTPSampler.response_timeout">30000</stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">10000</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">120000</stringProp>
         </HTTPSamplerProxy>
         <hashTree>
           <!-- Extract JWT from: {"access_token": "eyJ...", ...} -->
-          <JSONPathExtractor guiclass="JSONPathExtractorGui" testclass="JSONPathExtractor"
+          <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor"
                              testname="Extract ACCESS_TOKEN" enabled="true">
-            <stringProp name="JSONPathExtractor.referenceName">ACCESS_TOKEN</stringProp>
-            <stringProp name="JSONPathExtractor.jsonPathExpr">$.access_token</stringProp>
-            <stringProp name="JSONPathExtractor.defaultValue">TOKEN_NOT_FOUND</stringProp>
-            <stringProp name="JSONPathExtractor.match_no">0</stringProp>
-            <stringProp name="JSONPathExtractor.compute_concat">false</stringProp>
-          </JSONPathExtractor>
+            <stringProp name="JSONPostProcessor.referenceNames">ACCESS_TOKEN</stringProp>
+            <stringProp name="JSONPostProcessor.jsonPathExprs">$.access_token</stringProp>
+            <stringProp name="JSONPostProcessor.defaultValues">TOKEN_NOT_FOUND</stringProp>
+            <stringProp name="JSONPostProcessor.match_no">0</stringProp>
+          </JSONPostProcessor>
           <hashTree/>
           <!-- Assert login succeeded (response must contain access_token) -->
           <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion"
