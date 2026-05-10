@@ -12,7 +12,7 @@ UserPreferencesSchema  — Dining preferences (only relevant for reviewer accoun
 
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -134,7 +134,7 @@ class UserResponse(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     country: Optional[str] = None
-    languages: Optional[str] = None
+    languages: Optional[Union[str, List[str]]] = None
     gender: Optional[str] = None
     profile_photo_url: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -172,7 +172,7 @@ class OwnerProfileResponse(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     country: Optional[str] = None
-    languages: Optional[str] = None
+    languages: Optional[Union[str, List[str]]] = None
     gender: Optional[str] = None
     profile_photo_url: Optional[str] = None
     created_at: Optional[datetime] = None

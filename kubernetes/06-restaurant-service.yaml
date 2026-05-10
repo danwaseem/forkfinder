@@ -3,7 +3,7 @@
 # Logical scope : restaurant CRUD, search/filter, photo uploads, claim flow.
 # Routes served : /restaurants/*
 #
-# IMAGE: Replace <YOUR_ECR_REGISTRY> before applying.
+# IMAGE: Replace 884058772460.dkr.ecr.us-east-1.amazonaws.com before applying.
 # ──────────────────────────────────────────────────────────────────────────────
 
 apiVersion: apps/v1
@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: restaurant-service
-          image: <YOUR_ECR_REGISTRY>/forkfinder/restaurant-service:latest
+          image: 884058772460.dkr.ecr.us-east-1.amazonaws.com/forkfinder/restaurant-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

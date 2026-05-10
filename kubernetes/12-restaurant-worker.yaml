@@ -3,7 +3,7 @@
 # Consumes: restaurant.created | restaurant.updated | restaurant.claimed
 # Writes:   restaurant_events table (audit log)
 #
-# IMAGE: Replace <YOUR_ECR_REGISTRY> before applying.
+# IMAGE: Replace 884058772460.dkr.ecr.us-east-1.amazonaws.com before applying.
 # ──────────────────────────────────────────────────────────────────────────────
 
 apiVersion: apps/v1
@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: restaurant-worker
-          image: <YOUR_ECR_REGISTRY>/forkfinder/workers:latest
+          image: 884058772460.dkr.ecr.us-east-1.amazonaws.com/forkfinder/workers:latest
           imagePullPolicy: Always
           command: ["python", "-m", "workers.restaurant_worker"]
           env:

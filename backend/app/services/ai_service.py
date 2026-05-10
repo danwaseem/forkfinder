@@ -51,7 +51,7 @@ from ..schemas.ai_assistant import (
 )
 from . import preferences_service
 from . import prompts as P
-
+from ..models.restaurant import Restaurant
 
 # ---------------------------------------------------------------------------
 # 1. Filter Extraction

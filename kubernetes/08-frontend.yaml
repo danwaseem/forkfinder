@@ -5,7 +5,7 @@
 # environment variables during `npm run build`). Rebuild the image whenever
 # the backend API hostname changes.
 #
-# IMAGE: Replace <YOUR_ECR_REGISTRY> before applying.
+# IMAGE: Replace 884058772460.dkr.ecr.us-east-1.amazonaws.com before applying.
 # ──────────────────────────────────────────────────────────────────────────────
 
 apiVersion: apps/v1
@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: <YOUR_ECR_REGISTRY>/forkfinder/frontend:latest
+          image: 884058772460.dkr.ecr.us-east-1.amazonaws.com/forkfinder/frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80

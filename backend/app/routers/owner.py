@@ -56,16 +56,14 @@ def _handle(exc: Exception) -> None:
 # ---------------------------------------------------------------------------
 
 def _build_profile_response(current_user, db) -> OwnerProfileResponse:
-    from ..models.restaurant import Restaurant
-    restaurants = (
-        db.query(Restaurant)
-        .filter(
-            (Restaurant.created_by == current_user.id)
-            | (Restaurant.claimed_by == current_user.id)
-        )
-        .order_by(Restaurant.name)
-        .all()
-    )
+    from ..database import _ns
+    raw_restaurants = list(db.restaurants.find(
+        {"$or": [{"created_by": current_user.id}, {"claimed_by": current_user.id}]}
+    ).sort("name", 1))
+    restaurants = [
+        {**r, "id": r["_id"], "is_claimed": r.get("is_claimed", False)}
+        for r in raw_restaurants
+    ]
     return OwnerProfileResponse(
         id=current_user.id,
         name=current_user.name,
@@ -146,16 +144,18 @@ def update_owner_profile(
 ):
     """Update one or more owner profile fields. All fields are optional."""
     if payload.email and payload.email != current_user.email:
-        if db.query(User).filter(User.email == payload.email, User.id != current_user.id).first():
+        if db.users.find_one({"email": payload.email, "_id": {"$ne": current_user.id}}):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="That email address is already in use by another account.",
             )
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(current_user, field, value)
-    db.commit()
-    db.refresh(current_user)
-    return _build_profile_response(current_user, db)
+    updates = payload.model_dump(exclude_none=True)
+    if updates:
+        updates["updated_at"] = datetime.utcnow()
+        db.users.update_one({"_id": current_user.id}, {"$set": updates})
+    updated = db.users.find_one({"_id": current_user.id})
+    from ..database import _ns
+    return _build_profile_response(_ns(updated), db)
 
 
 @router.post(
@@ -171,8 +171,10 @@ def upload_owner_photo(
 ):
     """Upload a profile photo for the restaurant owner account."""
     url = save_upload(file, "profiles")
-    current_user.profile_photo_url = url
-    db.commit()
+    db.users.update_one(
+        {"_id": current_user.id},
+        {"$set": {"profile_photo_url": url, "updated_at": datetime.utcnow()}},
+    )
     return PhotoUploadResponse(profile_photo_url=url)
 
 

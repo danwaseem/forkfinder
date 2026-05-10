@@ -46,27 +46,27 @@ ForkFinder is a full-stack Yelp-style restaurant discovery and review platform. 
 
 ### Quickstart with Docker Compose (recommended for local dev)
 
-```bash
-cp .env.docker.example .env.docker
-# Edit .env.docker if needed — defaults work out of the box
+No env file needed — all defaults are baked in.
 
-docker compose --env-file .env.docker up --build
+```bash
+docker compose up --build
 ```
 
 Services started:
 
 | Service | URL |
 |---|---|
-| Frontend | http://localhost:80 |
+| Frontend | http://localhost |
 | Backend API | http://localhost:8000 |
 | Swagger UI | http://localhost:8000/docs |
 | MongoDB | localhost:27017 |
-| Kafka | localhost:9093 (external), kafka:9092 (internal) |
+| Kafka (external/host) | localhost:9093 |
+| Kafka (internal/containers) | kafka:9092 |
 
-To run without Kafka (lighter):
+To run without Kafka (lighter — MongoDB + backend + frontend only):
 
 ```bash
-docker compose --env-file .env.docker up mongodb backend frontend
+docker compose up mongodb backend frontend
 ```
 
 ---
